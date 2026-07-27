@@ -60,27 +60,49 @@ Run `npm run tauri:build` on a **Windows machine** *(or via a Windows CI runner)
 
 ---
 
-## 🏷️ Publishing Releases on GitHub with Versioning
+## 🏷️ Publishing Releases on GitHub with Versioning & Git Tags
 
-The repository includes an automated GitHub Actions workflow (`.github/workflows/release.yml`) that compiles `.dmg` and `.exe` binaries whenever a version tag is pushed.
+The repository includes an automated GitHub Actions workflow (`.github/workflows/release.yml`) that compiles `.dmg` and `.exe` binaries whenever a version tag starting with `v` (e.g. `v1.0.1`, `v1.0.2`) is pushed to GitHub.
 
-### How to Create & Publish a Versioned Release:
+### 📋 Complete Release Workflow:
 
-1. **Update Version** in `package.json` and `src-tauri/tauri.conf.json` (e.g. `"1.0.0"` -> `"1.0.1"`).
-2. **Commit Changes**:
-   ```bash
-   git add .
-   git commit -m "Release v1.0.1"
-   ```
-3. **Create & Push Version Tag**:
-   ```bash
-   git tag v1.0.1
-   git push origin v1.0.1
-   ```
+#### Step 1: Bump Version in Code
+Ensure the version string matches in both `package.json` and `src-tauri/tauri.conf.json`:
+- `package.json`: `"version": "1.0.2"`
+- `src-tauri/tauri.conf.json`: `"version": "1.0.2"`
 
-4. **Automatic Build & Release**:
-   - GitHub Actions will kick off two parallel runners: `macos-latest` (building `.dmg` and `.app`) and `windows-latest` (building `.exe` and `.msi`).
-   - Within 3 to 5 minutes, a new release named **`Restly v1.0.1`** will automatically appear under **Releases** on your GitHub repository with all download links attached!
+#### Step 2: Commit Version Changes
+```bash
+git add package.json src-tauri/tauri.conf.json
+git commit -m "Bump version to 1.0.2"
+git push origin main
+```
+
+#### Step 3: Create & Push Git Tag
+```bash
+# Create local version tag
+git tag v1.0.2
+
+# Push tag to GitHub (Triggers automated build & release)
+git push origin v1.0.2
+```
+
+#### Step 4: Automatic GitHub Release Build
+- GitHub Actions will kick off two parallel runners (`macos-latest` & `windows-latest`).
+- Within 3–5 minutes, a new release **`Restly v1.0.2`** will automatically be published under **Releases** on your GitHub repository with `Restly_1.0.2_aarch64.dmg` and `Restly_1.0.2_x64-setup.exe` attached!
+
+---
+
+### 🔖 Handy Git Tag Management Commands
+
+| Action | Command |
+| :--- | :--- |
+| **List all existing tags** | `git tag -l` |
+| **Create a new tag** | `git tag v1.0.2` |
+| **Push tag to GitHub** | `git push origin v1.0.2` |
+| **Delete local tag** | `git tag -d v1.0.2` |
+| **Delete remote tag on GitHub** | `git push origin :refs/tags/v1.0.2` |
+| **Re-create & push updated tag** | `git tag -d v1.0.2 && git push origin :refs/tags/v1.0.2 && git tag v1.0.2 && git push origin v1.0.2` |
 
 ---
 
