@@ -1,12 +1,6 @@
 {
-  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-config-schema/schema.json",
   "identifier": "default",
   "description": "Default permissions capability for Restly desktop application",
-  "windows": [
-    "main"
-  ],
-  "permissions": [
-    "core:default",
-    "opener:default"
-  ]
+  "windows": ["main"],
+  "permissions": ["core:default", "opener:default"]
 }
