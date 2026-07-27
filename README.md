@@ -104,6 +104,23 @@ git push origin v1.0.2
 | **Delete remote tag on GitHub** | `git push origin :refs/tags/v1.0.2` |
 | **Re-create & push updated tag** | `git tag -d v1.0.2 && git push origin :refs/tags/v1.0.2 && git tag v1.0.2 && git push origin v1.0.2` |
 
+#### 🗑️ How to Delete a Tag Completely (Local & Remote GitHub)
+If you created a tag by mistake and want to delete it from both your local computer and GitHub:
+```bash
+# 1. Delete local tag
+git tag -d v1.0.2
+
+# 2. Delete remote tag on GitHub
+git push origin :refs/tags/v1.0.2
+```
+
+#### 🔄 How to Update a Tag & Re-trigger GitHub Actions
+If you pushed a release tag, fixed a bug, and want GitHub Actions to rebuild and replace the release assets for the same version:
+```bash
+# Delete local and remote tag, re-tag current commit, and push back to GitHub
+git tag -d v1.0.2 && git push origin :refs/tags/v1.0.2 && git tag v1.0.2 && git push origin v1.0.2
+```
+
 ---
 
 ## ⌨️ Keyboard Shortcuts
