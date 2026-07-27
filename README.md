@@ -56,7 +56,31 @@ Run `npm run tauri:build` on a **Windows machine** *(or via a Windows CI runner)
 - **`.exe` NSIS Installer**: `src-tauri/target/release/bundle/nsis/Restly_1.0.0_x64-setup.exe`
 - **`.msi` Windows Installer**: `src-tauri/target/release/bundle/msi/Restly_1.0.0_x64_en-US.msi`
 
-> 💡 **Cross-Platform Building Tip**: To build both `.dmg` and `.exe` binaries automatically without owning both OS machines, use **GitHub Actions**. On every tag release, GitHub Actions can build macOS (`macos-latest`) and Windows (`windows-latest`) installers in parallel and attach them directly to your GitHub Releases page!
+> 💡 **Cross-Platform Building Tip**: To build both `.dmg` and `.exe` binaries automatically without owning both OS machines, use **GitHub Actions**. On every tag release, GitHub Actions builds macOS (`macos-latest`) and Windows (`windows-latest`) installers in parallel and attaches them directly to your GitHub Releases page!
+
+---
+
+## 🏷️ Publishing Releases on GitHub with Versioning
+
+The repository includes an automated GitHub Actions workflow (`.github/workflows/release.yml`) that compiles `.dmg` and `.exe` binaries whenever a version tag is pushed.
+
+### How to Create & Publish a Versioned Release:
+
+1. **Update Version** in `package.json` and `src-tauri/tauri.conf.json` (e.g. `"1.0.0"` -> `"1.0.1"`).
+2. **Commit Changes**:
+   ```bash
+   git add .
+   git commit -m "Release v1.0.1"
+   ```
+3. **Create & Push Version Tag**:
+   ```bash
+   git tag v1.0.1
+   git push origin v1.0.1
+   ```
+
+4. **Automatic Build & Release**:
+   - GitHub Actions will kick off two parallel runners: `macos-latest` (building `.dmg` and `.app`) and `windows-latest` (building `.exe` and `.msi`).
+   - Within 3 to 5 minutes, a new release named **`Restly v1.0.1`** will automatically appear under **Releases** on your GitHub repository with all download links attached!
 
 ---
 
