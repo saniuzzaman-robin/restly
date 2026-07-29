@@ -1,6 +1,10 @@
 /**
- * LocalStorage state manager with default initial collections & environments
+ * LocalStorage state manager with schema migration, QuotaExceededError protection,
+ * response payload trimming, & storage pruning.
  */
+
+const STORAGE_VERSION_KEY = 'restly_schema_version';
+const CURRENT_STORAGE_VERSION = '1.0.4';
 
 const STORAGE_KEYS = {
   COLLECTIONS: 'aether_collections',
@@ -110,7 +114,89 @@ const DEFAULT_COLLECTIONS = [
   },
 ];
 
+/**
+ * Trims heavy response objects (rawText > 10KB) before saving to local storage
+ */
+const sanitizeDataForStorage = (key, data) => {
+  if (key === STORAGE_KEYS.HISTORY && Array.isArray(data)) {
+    // Keep max 30 history items and trim large response bodies
+    return data.slice(0, 30).map((item) => {
+      if (item.response?.rawText && item.response.rawText.length > 5000) {
+        return {
+          ...item,
+          response: {
+            ...item.response,
+            rawText: item.response.rawText.slice(0, 5000) + '\n... [Response truncated for storage]',
+            data: typeof item.response.data === 'object' ? null : item.response.data,
+          },
+        };
+      }
+      return item;
+    });
+  }
+
+  if (key === STORAGE_KEYS.OPEN_TABS && Array.isArray(data)) {
+    // Sanitize open tabs response objects
+    return data.map((tab) => {
+      if (tab.response?.rawText && tab.response.rawText.length > 20000) {
+        return {
+          ...tab,
+          response: {
+            ...tab.response,
+            rawText: tab.response.rawText.slice(0, 20000) + '\n... [Response truncated for storage]',
+          },
+        };
+      }
+      return tab;
+    });
+  }
+
+  return data;
+};
+
+/**
+ * Prunes old history and heavy response entries from localStorage when quota is exceeded
+ */
+const pruneLocalStorageQuota = () => {
+  try {
+    // Clear old history entries
+    const savedHistory = localStorage.getItem(STORAGE_KEYS.HISTORY);
+    if (savedHistory) {
+      const history = JSON.parse(savedHistory);
+      if (history.length > 5) {
+        const trimmedHistory = history.slice(0, 5).map((h) => ({ ...h, response: null }));
+        localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(trimmedHistory));
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.HISTORY);
+      }
+    }
+  } catch (e) {
+    console.warn('Unable to prune localStorage:', e);
+  }
+};
+
+/**
+ * Automatic Schema Migration & Data Cleanup Routine
+ */
+const migrateAndCleanupStorage = () => {
+  try {
+    const savedVersion = localStorage.getItem(STORAGE_VERSION_KEY);
+    if (!savedVersion) {
+      // First run or upgrading schema: clean heavy caches and stamp current version
+      pruneLocalStorageQuota();
+      localStorage.setItem(STORAGE_VERSION_KEY, CURRENT_STORAGE_VERSION);
+    } else if (savedVersion !== CURRENT_STORAGE_VERSION) {
+      // Version upgrade migration logic
+      localStorage.setItem(STORAGE_VERSION_KEY, CURRENT_STORAGE_VERSION);
+    }
+  } catch (e) {
+    console.warn('Data migration check failed:', e);
+  }
+};
+
 export const loadInitialState = () => {
+  migrateAndCleanupStorage();
+
   try {
     const savedCollections = localStorage.getItem(STORAGE_KEYS.COLLECTIONS);
     const collections = savedCollections ? JSON.parse(savedCollections) : DEFAULT_COLLECTIONS;
@@ -168,9 +254,34 @@ export const loadInitialState = () => {
 
 export const saveStateItem = (key, data) => {
   try {
-    localStorage.setItem(key, JSON.stringify(data));
+    const sanitizedData = sanitizeDataForStorage(key, data);
+    const serialized = typeof sanitizedData === 'string' ? sanitizedData : JSON.stringify(sanitizedData);
+    localStorage.setItem(key, serialized);
   } catch (err) {
-    console.error(`Failed to save ${key} to localStorage`, err);
+    // Check if error is QuotaExceededError
+    if (err.name === 'QuotaExceededError' || err.code === 22 || err.code === 1014) {
+      console.warn(`LocalStorage quota exceeded while saving ${key}. Pruning old history cache...`);
+      pruneLocalStorageQuota();
+      try {
+        const sanitizedData = sanitizeDataForStorage(key, data);
+        const serialized = typeof sanitizedData === 'string' ? sanitizedData : JSON.stringify(sanitizedData);
+        localStorage.setItem(key, serialized);
+      } catch (retryErr) {
+        console.warn(`Could not save ${key} even after pruning:`, retryErr);
+      }
+    } else {
+      console.error(`Failed to save ${key} to localStorage:`, err);
+    }
+  }
+};
+
+export const clearAllStorage = () => {
+  try {
+    Object.values(STORAGE_KEYS).forEach((k) => localStorage.removeItem(k));
+    localStorage.removeItem(STORAGE_VERSION_KEY);
+    window.location.reload();
+  } catch (e) {
+    console.error('Failed to clear app storage:', e);
   }
 };
 

@@ -1,7 +1,7 @@
 {
   "name": "restly",
   "private": true,
-  "version": "1.0.3",
+  "version": "1.0.4",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "mac:unquarantine": "xattr -cr /Applications/Restly.app 2>/dev/null || xattr -cr src-tauri/target/release/bundle/macos/Restly.app 2>/dev/null || true"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",
