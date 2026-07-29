@@ -58,6 +58,46 @@ After running this command, double-clicking **Restly.app** will launch smoothly 
 
 ---
 
+## 🏷️ Git Tag & Release Management Commands
+
+### 1. Creating & Pushing a Release Tag
+```bash
+# Create annotated tag
+git tag -a v1.0.3 -m "Release v1.0.3"
+
+# Push tag to GitHub
+git push origin v1.0.3
+```
+
+### 2. Updating / Replacing an Existing Tag
+```bash
+# 1. Update tag locally
+git tag -a -f v1.0.3 -m "Updated release v1.0.3"
+
+# 2. Force push updated tag to GitHub
+git push origin v1.0.3 --force
+```
+
+### 3. Deleting a Tag (Local & Remote)
+```bash
+# Delete local tag
+git tag -d v1.0.3
+
+# Delete remote tag on origin
+git push origin --delete v1.0.3
+```
+
+### 4. Listing & Inspecting Tags
+```bash
+# List all tags
+git tag -l
+
+# View details of a specific tag
+git show v1.0.3
+```
+
+---
+
 ## 🔄 Data Storage & Schema Migration
 
 Restly includes automatic schema versioning (`restly_schema_version`) and response payload sanitization:
