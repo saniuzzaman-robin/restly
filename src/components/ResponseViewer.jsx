@@ -1,44 +1,256 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { JsonPrettyViewer } from './JsonPrettyViewer';
-import { Copy, Download, Search, Check, AlertCircle, Clock, HardDrive, Terminal, Globe, ExternalLink } from 'lucide-react';
+import { VisualizerViewer } from './VisualizerViewer';
+import { CustomSelect } from './CustomSelect';
+import { SearchWidget } from './SearchWidget';
+import { HighlightedTextView } from './HighlightedTextView';
+import { Copy, Download, Search, Check, AlertCircle, Clock, HardDrive, Terminal, Layers, Eye, Cookie, AlignLeft, FileCode, FileText } from 'lucide-react';
 
-export const ResponseViewer = ({ response, isLoading }) => {
-  const [activeTab, setActiveTab] = useState('pretty');
-  const [copied, setCopied] = useState(false);
-  const [searchFilter, setSearchFilter] = useState('');
+const BODY_VIEW_OPTIONS = [
+  { value: 'pretty', label: 'Body: Pretty' },
+  { value: 'raw', label: 'Body: Raw' },
+  { value: 'hex', label: 'Body: Hex' },
+];
 
-  if (isLoading) {
+const RESPONSE_FORMAT_OPTIONS = [
+  { value: 'auto', label: 'Auto-detect' },
+  { value: 'json', label: 'JSON' },
+  { value: 'xml', label: 'XML' },
+  { value: 'html', label: 'HTML' },
+  { value: 'javascript', label: 'JavaScript' },
+  { value: 'yaml', label: 'YAML' },
+  { value: 'markdown', label: 'Markdown' },
+  { value: 'base64', label: 'Base64 Decoded' },
+  { value: 'text', label: 'Text' },
+];
+
+/**
+ * Decodes and renders Base64 encoded payload strings
+ */
+const Base64Viewer = ({ text = '' }) => {
+  const decodedResult = useMemo(() => {
+    if (!text) return null;
+    const cleanStr = text.trim().replace(/\s+/g, '');
+    try {
+      const decoded = atob(cleanStr);
+      return decoded;
+    } catch (e) {
+      return null;
+    }
+  }, [text]);
+
+  if (!text) {
+    return <div style={{ color: 'var(--text-muted)', fontSize: '12px' }}>No base64 data to decode</div>;
+  }
+
+  if (decodedResult === null) {
     return (
-      <div className="pane-response" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{
-            width: '32px',
-            height: '32px',
-            border: '3px solid var(--border-color)',
-            borderTopColor: 'var(--accent-primary)',
-            borderRadius: '50%',
-            animation: 'spin 0.8s linear infinite',
-            margin: '0 auto 12px auto'
-          }}></div>
-          <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
-          <div style={{ fontSize: '14px', fontWeight: '500', color: 'var(--text-main)' }}>Sending HTTP Request...</div>
-          <div style={{ fontSize: '11px', marginTop: '4px' }}>Resolving variables and awaiting server response</div>
-        </div>
+      <div style={{ padding: '12px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', color: '#EF4444', fontSize: '12px' }}>
+        <strong>Base64 Decoding Error:</strong> The response string is not valid Base64 encoded data.
       </div>
     );
   }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--accent-primary)', textTransform: 'uppercase' }}>
+        ✓ Decoded Base64 Payload ({decodedResult.length} bytes)
+      </div>
+      <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--text-main)', fontFamily: 'var(--font-mono)', background: 'var(--bg-tab)', padding: '12px', borderRadius: '6px' }}>
+        {decodedResult}
+      </pre>
+    </div>
+  );
+};
+
+/**
+ * Format Hex View for response body inspection
+ */
+const HexViewer = ({ text = '' }) => {
+  const hexLines = useMemo(() => {
+    const encoder = new TextEncoder();
+    const bytes = encoder.encode(text.slice(0, 4096)); // Limit preview to 4KB
+    const lines = [];
+
+    for (let i = 0; i < bytes.length; i += 16) {
+      const chunk = bytes.slice(i, i + 16);
+      const offset = i.toString(16).padStart(8, '0');
+      const hex = Array.from(chunk)
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join(' ');
+      const paddedHex = hex.padEnd(47, ' ');
+      const ascii = Array.from(chunk)
+        .map((b) => (b >= 32 && b <= 126 ? String.fromCharCode(b) : '.'))
+        .join('');
+
+      lines.push(`${offset}  ${paddedHex}  |${ascii}|`);
+    }
+
+    return lines;
+  }, [text]);
+
+  if (!text) {
+    return <div style={{ color: 'var(--text-muted)', fontSize: '12px' }}>No response data for Hex view</div>;
+  }
+
+  return (
+    <pre style={{
+      margin: 0,
+      fontFamily: 'var(--font-mono)',
+      fontSize: '11px',
+      lineHeight: '1.5',
+      color: 'var(--text-main)',
+      background: 'var(--bg-tab)',
+      padding: '12px',
+      borderRadius: '6px',
+      overflowX: 'auto'
+    }}>
+      {hexLines.join('\n')}
+    </pre>
+  );
+};
+
+export const ResponseViewer = ({ response, activeTab: externalTab, onTabChange }) => {
+  const [bodyViewMode, setBodyViewMode] = useState('pretty'); // 'pretty' | 'raw' | 'hex'
+  const [internalTab, setInternalTab] = useState('body'); // 'body' | 'preview' | 'visualize' | 'headers' | 'cookies'
+  const [formatMode, setFormatMode] = useState('auto');
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchState, setSearchFilterState] = useState({ query: '', matchCase: false, wholeWord: false, useRegex: false });
+  const [currentMatchIdx, setCurrentMatchIndex] = useState(0);
+  const [copied, setCopied] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+  const paneRef = useRef(null);
+
+  const activeTab = externalTab || internalTab;
+  const setActiveTab = (tab) => {
+    if (onTabChange) onTabChange(tab);
+    else setInternalTab(tab);
+  };
+
+  // Keyboard shortcut listener for Cmd + F / Ctrl + F strictly when response pane is hovered or focused
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
+        const isFocusInside = paneRef.current && paneRef.current.contains(document.activeElement);
+        if (isHovered || isFocusInside) {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsSearchOpen(true);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [isHovered]);
 
   if (!response) {
     return (
-      <div className="pane-response" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-dim)' }}>
-        <div style={{ textAlign: 'center', maxWidth: '320px' }}>
-          <Terminal size={40} style={{ opacity: 0.3, marginBottom: '12px' }} />
-          <div style={{ fontSize: '14px', fontWeight: '500', color: 'var(--text-muted)' }}>No Response Yet</div>
-          <div style={{ fontSize: '12px', marginTop: '6px' }}>Click <strong>Send</strong> or press <kbd style={{ background: 'var(--bg-card)', padding: '2px 5px', borderRadius: '3px' }}>Cmd/Ctrl + Enter</kbd> to execute this API request.</div>
+      <div className="pane-response" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+        <div style={{ textAlign: 'center' }}>
+          <Terminal size={32} style={{ marginBottom: '8px', opacity: 0.5 }} />
+          <div style={{ fontSize: '13px', fontWeight: '500' }}>No Response Yet</div>
+          <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '4px' }}>
+            Send a request or press <span style={{ fontFamily: 'var(--font-mono)' }}>Cmd+Enter</span> to view response details
+          </div>
         </div>
       </div>
     );
   }
+
+  const handleCopyResponse = () => {
+    const textToCopy = typeof response.data === 'object'
+      ? JSON.stringify(response.data, null, 2)
+      : (response.rawText || '');
+    navigator.clipboard.writeText(textToCopy);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleDownloadResponse = () => {
+    const blob = new Blob([response.rawText || ''], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `response-${Date.now()}.${response.isJson ? 'json' : 'txt'}`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Calculate search matches in rawText
+  const matches = useMemo(() => {
+    const query = searchState.query;
+    if (!query || !response.rawText) return [];
+
+    try {
+      let flags = searchState.matchCase ? 'g' : 'gi';
+      let pattern = query;
+
+      if (!searchState.useRegex) {
+        pattern = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      }
+      if (searchState.wholeWord) {
+        pattern = `\\b${pattern}\\b`;
+      }
+
+      const regex = new RegExp(pattern, flags);
+      const results = [];
+      let match;
+      while ((match = regex.exec(response.rawText)) !== null) {
+        results.push(match.index);
+        if (regex.lastIndex === match.index) regex.lastIndex++;
+      }
+      return results;
+    } catch (e) {
+      return [];
+    }
+  }, [searchState, response.rawText]);
+
+  const handleNextMatch = () => {
+    if (matches.length > 0) {
+      setCurrentMatchIndex((prev) => (prev + 1) % matches.length);
+    }
+  };
+
+  const handlePrevMatch = () => {
+    if (matches.length > 0) {
+      setCurrentMatchIndex((prev) => (prev - 1 + matches.length) % matches.length);
+    }
+  };
+
+  const renderStatusBadge = () => {
+    const status = response.status || 0;
+    let bg = 'rgba(239, 68, 68, 0.15)';
+    let color = '#EF4444';
+
+    if (status >= 200 && status < 300) {
+      bg = 'rgba(16, 185, 129, 0.15)';
+      color = '#10B981';
+    } else if (status >= 300 && status < 400) {
+      bg = 'rgba(59, 130, 246, 0.15)';
+      color = '#3B82F6';
+    } else if (status >= 400 && status < 500) {
+      bg = 'rgba(245, 158, 11, 0.15)';
+      color = '#F59E0B';
+    }
+
+    return (
+      <div style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '6px',
+        background: bg,
+        color: color,
+        padding: '2px 8px',
+        borderRadius: '4px',
+        fontWeight: '700',
+        fontSize: '12px',
+        fontFamily: 'var(--font-mono)'
+      }}>
+        <span>{status || 'ERR'}</span>
+        <span>{response.statusText || 'Error'}</span>
+      </div>
+    );
+  };
 
   const formatSize = (bytes) => {
     if (!bytes) return '0 B';
@@ -47,135 +259,33 @@ export const ResponseViewer = ({ response, isLoading }) => {
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   };
 
-  const getStatusColor = (status) => {
-    if (status >= 200 && status < 300) return '#10B981';
-    if (status >= 300 && status < 400) return '#2563EB';
-    if (status >= 400 && status < 500) return '#F59E0B';
-    return '#EF4444';
-  };
-
-  const copyToClipboard = () => {
-    const textToCopy = typeof response.data === 'object' ? JSON.stringify(response.data, null, 2) : response.rawText;
-    navigator.clipboard.writeText(textToCopy);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const downloadFile = () => {
-    const text = typeof response.data === 'object' ? JSON.stringify(response.data, null, 2) : response.rawText;
-    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `response_${Date.now()}.${response.isJson ? 'json' : 'txt'}`;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-
-  // Test assertions calculation
-  const assertions = [
-    { name: 'Status code is 200 OK', passed: response.status === 200 },
-    { name: 'Response time is under 1000ms', passed: response.durationMs < 1000 },
-    { name: 'Response is valid JSON payload', passed: response.isJson },
-    { name: 'Content-Type header exists', passed: response.headers?.some(h => h.key.toLowerCase() === 'content-type') },
-  ];
-  const passedCount = assertions.filter(a => a.passed).length;
-
-  // Filter json or raw text if search active
-  let displayBody = response.rawText;
-  if (response.isJson && response.data) {
-    displayBody = JSON.stringify(response.data, null, 2);
-  }
-
-  if (searchFilter.trim() && displayBody) {
-    displayBody = displayBody
-      .split('\n')
-      .filter((line) => line.toLowerCase().includes(searchFilter.toLowerCase()))
-      .join('\n');
-  }
-
-  // Generate styled document for iframe preview
-  const generatePreviewDoc = () => {
-    if (response.isJson && response.data) {
-      const formattedJson = JSON.stringify(response.data, null, 2);
-      return `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="utf-8"/>
-          <style>
-            body {
-              margin: 0;
-              padding: 20px;
-              background-color: #0F172A;
-              color: #F8FAFC;
-              font-family: 'JetBrains Mono', SFMono-Regular, Consolas, monospace;
-              font-size: 13px;
-              line-height: 1.6;
-            }
-            .card {
-              background: #1E293B;
-              border: 1px solid #334155;
-              border-radius: 8px;
-              padding: 20px;
-              box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            }
-            pre {
-              margin: 0;
-              white-space: pre-wrap;
-              word-break: break-all;
-              color: #38BDF8;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="card">
-            <pre>${formattedJson}</pre>
-          </div>
-        </body>
-        </html>
-      `;
-    }
-
-    if (response.rawText && (response.rawText.includes('<html') || response.rawText.includes('<body') || response.rawText.includes('<!DOCTYPE'))) {
-      return response.rawText;
-    }
-
-    return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8"/>
-        <style>
-          body {
-            margin: 0;
-            padding: 20px;
-            background-color: #F8FAFC;
-            color: #0F172A;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            font-size: 13px;
-            line-height: 1.6;
-          }
-          pre {
-            margin: 0;
-            white-space: pre-wrap;
-            word-break: break-all;
-            background: #FFFFFF;
-            border: 1px solid #E2E8F0;
-            padding: 16px;
-            border-radius: 6px;
-          }
-        </style>
-      </head>
-      <body>
-        <pre>${response.rawText || 'No Content'}</pre>
-      </body>
-      </html>
-    `;
-  };
-
   return (
-    <div className="pane-response">
+    <div
+      ref={paneRef}
+      tabIndex={0}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      className="pane-response"
+      style={{ position: 'relative', outline: 'none' }}
+    >
+      {/* Floating Search Widget adjacent to the response toolbar */}
+      {isSearchOpen && (
+        <div style={{ position: 'absolute', top: '38px', right: '12px', zIndex: 100 }}>
+          <SearchWidget
+            isOpen={isSearchOpen}
+            onClose={() => setIsSearchOpen(false)}
+            onSearch={(state) => {
+              setSearchFilterState(state);
+              setCurrentMatchIndex(0);
+            }}
+            totalMatches={matches.length}
+            currentMatchIndex={currentMatchIdx}
+            onNextMatch={handleNextMatch}
+            onPrevMatch={handlePrevMatch}
+          />
+        </div>
+      )}
+
       {/* Response Bar Header */}
       <div style={{
         display: 'flex',
@@ -187,86 +297,113 @@ export const ResponseViewer = ({ response, isLoading }) => {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           {/* Status Badge */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{
-              fontSize: '11px',
-              fontWeight: '700',
-              color: 'var(--text-muted)',
-              textTransform: 'uppercase'
-            }}>
-              STATUS:
-            </span>
-            <span style={{
-              background: `${getStatusColor(response.status)}18`,
-              color: getStatusColor(response.status),
-              border: `1px solid ${getStatusColor(response.status)}44`,
-              padding: '2px 8px',
-              borderRadius: '4px',
-              fontWeight: '700',
-              fontSize: '12px',
-              fontFamily: 'var(--font-mono)'
-            }}>
-              {response.status} {response.statusText}
-            </span>
-          </div>
+          {renderStatusBadge()}
 
-          {/* Time Badge */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-muted)', fontSize: '12px' }}>
-            <Clock size={13} />
-            <span>{response.durationMs} ms</span>
-          </div>
-
-          {/* Size Badge */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-muted)', fontSize: '12px' }}>
-            <HardDrive size={13} />
-            <span>{formatSize(response.sizeBytes)}</span>
+          {/* Time & Size */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '11px', color: 'var(--text-muted)' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Clock size={12} /> {response.durationMs || 0} ms
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <HardDrive size={12} /> {formatSize(response.sizeBytes)}
+            </span>
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button className="aether-btn sm" onClick={copyToClipboard} title="Copy response to clipboard">
-            {copied ? <Check size={13} color="#10B981" /> : <Copy size={13} />}
+        {/* Quick Copy / Download Buttons */}
+        <div style={{ display: 'flex', gap: '6px' }}>
+          <button
+            className="aether-btn sm"
+            onClick={handleCopyResponse}
+            title="Copy Full Response Body"
+          >
+            {copied ? <Check size={12} color="#10B981" /> : <Copy size={12} />}
             {copied ? 'Copied' : 'Copy'}
           </button>
-          <button className="aether-btn sm" onClick={downloadFile} title="Download response file">
-            <Download size={13} /> Save
+          <button
+            className="aether-btn sm"
+            onClick={handleDownloadResponse}
+            title="Download Response File"
+          >
+            <Download size={12} /> Download
           </button>
         </div>
       </div>
 
-      {/* Response Navigation Tabs */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-tab)', paddingRight: '12px' }}>
-        <div style={{ display: 'flex' }}>
-          {[
-            { id: 'pretty', label: 'Pretty' },
-            { id: 'raw', label: 'Raw' },
-            { id: 'preview', label: 'Preview' },
-            { id: 'headers', label: `Headers (${response.headers?.length || 0})` },
-            { id: 'tests', label: `Tests (${passedCount}/${assertions.length})` },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              className={`sub-tab-btn ${activeTab === tab.id ? 'active' : ''}`}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {(activeTab === 'pretty' || activeTab === 'raw') && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--bg-input)', padding: '2px 8px', borderRadius: '4px', border: '1px solid var(--border-color)' }}>
-            <Search size={12} color="var(--text-muted)" />
-            <input
-              type="text"
-              placeholder="Search response..."
-              value={searchFilter}
-              onChange={(e) => setSearchFilter(e.target.value)}
-              style={{ background: 'none', border: 'none', color: 'var(--text-main)', fontSize: '11px', outline: 'none', width: '120px' }}
+      {/* Postman Style View Tabs Bar */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-tab)', paddingRight: '12px', paddingLeft: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {/* 1. Body View Dropdown (Pretty, Raw, Hex) */}
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <CustomSelect
+              options={BODY_VIEW_OPTIONS}
+              value={bodyViewMode}
+              onChange={(val) => {
+                setBodyViewMode(val);
+                setActiveTab('body');
+              }}
+              size="sm"
+              style={{ width: '130px' }}
             />
           </div>
-        )}
+
+          <div style={{ width: '1px', height: '16px', background: 'var(--border-color)', margin: '0 4px' }}></div>
+
+          {/* 2. Preview Button */}
+          <button
+            className={`sub-tab-btn ${activeTab === 'preview' ? 'active' : ''}`}
+            onClick={() => setActiveTab('preview')}
+          >
+            Preview
+          </button>
+
+          {/* 3. Visualize Button */}
+          <button
+            className={`sub-tab-btn ${activeTab === 'visualize' ? 'active' : ''}`}
+            onClick={() => setActiveTab('visualize')}
+          >
+            Visualize
+          </button>
+
+          {/* 4. Headers Button */}
+          <button
+            className={`sub-tab-btn ${activeTab === 'headers' ? 'active' : ''}`}
+            onClick={() => setActiveTab('headers')}
+          >
+            Headers ({response.headers?.length || 0})
+          </button>
+
+          {/* 5. Cookies Button */}
+          <button
+            className={`sub-tab-btn ${activeTab === 'cookies' ? 'active' : ''}`}
+            onClick={() => setActiveTab('cookies')}
+          >
+            Cookies ({response.cookies?.length || 0})
+          </button>
+        </div>
+
+        {/* Search & Format Sub-Type Controls Bar */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {(activeTab === 'body' && bodyViewMode === 'pretty') && (
+            <CustomSelect
+              options={RESPONSE_FORMAT_OPTIONS}
+              value={formatMode}
+              onChange={setFormatMode}
+              size="sm"
+              style={{ width: '150px' }}
+            />
+          )}
+
+          {/* Search Icon Trigger Button */}
+          <button
+            className={`aether-btn sm ${isSearchOpen ? 'primary' : ''}`}
+            onClick={() => setIsSearchOpen(!isSearchOpen)}
+            title="Search Response Body (Cmd+F)"
+            style={{ padding: '4px 8px' }}
+          >
+            <Search size={13} />
+          </button>
+        </div>
       </div>
 
       {/* Response Content View */}
@@ -280,107 +417,81 @@ export const ResponseViewer = ({ response, isLoading }) => {
             color: '#EF4444',
             marginBottom: '12px',
             display: 'flex',
-            alignItems: 'flex-start',
+            alignItems: 'center',
             gap: '8px'
           }}>
-            <AlertCircle size={16} color="#EF4444" style={{ marginTop: '2px', flexShrink: 0 }} />
+            <AlertCircle size={16} />
             <div>
-              <strong style={{ display: 'block', marginBottom: '2px', color: '#EF4444' }}>Request Execution Error</strong>
-              {response.errorMessage}
+              <strong>Execution Error:</strong> {response.errorMessage || 'Failed to execute HTTP request'}
             </div>
           </div>
         )}
 
-        {activeTab === 'pretty' && (
-          <JsonPrettyViewer data={response.data} rawText={displayBody || response.rawText} />
+        {/* BODY TABS (PRETTY / RAW / HEX) */}
+        {activeTab === 'body' && (
+          <>
+            {bodyViewMode === 'pretty' && (
+              formatMode === 'base64' ? (
+                <Base64Viewer text={response.rawText || ''} />
+              ) : isSearchOpen && searchState.query ? (
+                <HighlightedTextView
+                  text={typeof response.data === 'object' ? JSON.stringify(response.data, null, 2) : (response.rawText || '')}
+                  searchState={searchState}
+                  currentMatchIndex={currentMatchIdx}
+                />
+              ) : response.isJson || typeof response.data === 'object' ? (
+                <JsonPrettyViewer data={response.data} rawText={response.rawText} />
+              ) : (
+                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--text-main)' }}>
+                  {response.rawText || 'No Content'}
+                </pre>
+              )
+            )}
+
+            {bodyViewMode === 'raw' && (
+              <HighlightedTextView
+                text={response.rawText || ''}
+                searchState={searchState}
+                currentMatchIndex={currentMatchIdx}
+              />
+            )}
+
+            {bodyViewMode === 'hex' && (
+              <HexViewer text={response.rawText || ''} />
+            )}
+          </>
         )}
 
-        {activeTab === 'raw' && (
-          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--text-main)', lineHeight: '1.5' }}>
-            {displayBody || response.rawText || 'Empty Response Body'}
-          </pre>
-        )}
-
+        {/* PREVIEW TAB */}
         {activeTab === 'preview' && (
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            height: '100%',
-            minHeight: '320px',
-            border: '1px solid var(--border-color)',
-            borderRadius: '8px',
-            overflow: 'hidden',
-            background: 'var(--bg-card)'
-          }}>
-            {/* Browser Frame Window Header */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '8px 12px',
-              background: 'var(--bg-tab)',
-              borderBottom: '1px solid var(--border-color)',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#EF4444', display: 'inline-block' }}></span>
-                <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#F59E0B', display: 'inline-block' }}></span>
-                <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#10B981', display: 'inline-block' }}></span>
-              </div>
-
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                background: 'var(--bg-input)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                padding: '3px 10px',
-                fontSize: '11px',
-                color: 'var(--text-muted)',
-                width: '60%',
-                maxWidth: '400px',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap'
-              }}>
-                <Globe size={12} color="var(--text-muted)" />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {response.url || 'http://localhost'}
-                </span>
-              </div>
-
-              <span style={{ fontSize: '10px', color: 'var(--text-dim)', fontWeight: '600', textTransform: 'uppercase' }}>
-                {response.isJson ? 'JSON Render' : 'HTML View'}
-              </span>
-            </div>
-
-            {/* Iframe Viewport */}
+          <div style={{ height: '100%', minHeight: '300px', background: '#FFFFFF', borderRadius: '6px', overflow: 'hidden' }}>
             <iframe
-              title="Response Preview"
-              srcDoc={generatePreviewDoc()}
-              style={{
-                flex: 1,
-                width: '100%',
-                minHeight: '280px',
-                border: 'none',
-                background: 'transparent'
-              }}
+              title="HTML Response Preview"
+              srcDoc={response.rawText || ''}
+              style={{ width: '100%', height: '100%', border: 'none', minHeight: '300px' }}
+              sandbox=""
             />
           </div>
         )}
 
+        {/* VISUALIZE TAB */}
+        {activeTab === 'visualize' && (
+          <VisualizerViewer data={response.data} rawText={response.rawText} />
+        )}
+
+        {/* HEADERS TAB */}
         {activeTab === 'headers' && (
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
             <thead>
-              <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)', fontSize: '11px' }}>
-                <th style={{ padding: '6px 12px' }}>HEADER</th>
+              <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)', textAlign: 'left' }}>
+                <th style={{ padding: '6px 12px', width: '35%' }}>KEY</th>
                 <th style={{ padding: '6px 12px' }}>VALUE</th>
               </tr>
             </thead>
             <tbody>
-              {(response.headers || []).map((h, i) => (
-                <tr key={i} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                  <td style={{ padding: '6px 12px', color: 'var(--accent-primary)', fontWeight: '500' }}>{h.key}</td>
+              {(response.headers || []).map((h, idx) => (
+                <tr key={idx} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                  <td style={{ padding: '6px 12px', color: 'var(--accent-primary)', fontWeight: '600' }}>{h.key}</td>
                   <td style={{ padding: '6px 12px', color: 'var(--text-main)', wordBreak: 'break-all' }}>{h.value}</td>
                 </tr>
               ))}
@@ -388,28 +499,35 @@ export const ResponseViewer = ({ response, isLoading }) => {
           </table>
         )}
 
-        {activeTab === 'tests' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {assertions.map((ast, i) => (
-              <div
-                key={i}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '8px 12px',
-                  borderRadius: '6px',
-                  background: ast.passed ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                  border: `1px solid ${ast.passed ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.25)'}`,
-                }}
-              >
-                {ast.passed ? <Check size={14} color="#10B981" /> : <AlertCircle size={14} color="#EF4444" />}
-                <span style={{ color: ast.passed ? '#10B981' : '#EF4444', fontWeight: '500' }}>
-                  {ast.passed ? 'PASS' : 'FAIL'}
-                </span>
-                <span style={{ color: 'var(--text-main)' }}>: {ast.name}</span>
+        {/* COOKIES TAB */}
+        {activeTab === 'cookies' && (
+          <div>
+            {(response.cookies || []).length === 0 ? (
+              <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px 0' }}>
+                No response cookies set by this request.
               </div>
-            ))}
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)', textAlign: 'left' }}>
+                    <th style={{ padding: '6px 12px' }}>NAME</th>
+                    <th style={{ padding: '6px 12px' }}>VALUE</th>
+                    <th style={{ padding: '6px 12px' }}>DOMAIN</th>
+                    <th style={{ padding: '6px 12px' }}>PATH</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(response.cookies || []).map((c, idx) => (
+                    <tr key={idx} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '6px 12px', color: 'var(--accent-primary)', fontWeight: '600' }}>{c.name}</td>
+                      <td style={{ padding: '6px 12px', color: 'var(--text-main)', wordBreak: 'break-all' }}>{c.value}</td>
+                      <td style={{ padding: '6px 12px', color: 'var(--text-muted)' }}>{c.domain}</td>
+                      <td style={{ padding: '6px 12px', color: 'var(--text-muted)' }}>{c.path || '/'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         )}
       </div>

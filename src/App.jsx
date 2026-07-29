@@ -11,6 +11,7 @@ import { CodeSnippetModal } from './components/CodeSnippetModal';
 import { CollectionModal } from './components/CollectionModal';
 import { CurlImportModal } from './components/CurlImportModal';
 import { GoogleAuthModal } from './components/GoogleAuthModal';
+import { ConsoleDrawer } from './components/ConsoleDrawer';
 import { loadInitialState, saveStateItem, STORAGE_KEYS } from './utils/storage';
 import { executeHttpRequest } from './utils/requestExecutor';
 import { exportToPostmanFormat } from './utils/postmanFormat';
@@ -31,6 +32,10 @@ export default function App() {
 
   const [tabs, setTabs] = useState(initialData.openTabs);
   const [activeTabId, setActiveTabId] = useState(initialData.activeTabId);
+
+  // Console Logs State
+  const [consoleLogs, setConsoleLogs] = useState([]);
+  const [isConsoleOpen, setIsConsoleOpen] = useState(false);
 
   // Theme State ('dark' | 'light')
   const [theme, setTheme] = useState(() => {
@@ -299,6 +304,20 @@ export default function App() {
       tabConfig: { ...activeTab },
     };
     setHistory([historyItem, ...history.slice(0, 49)]); // Keep last 50
+
+    // Log to Postman Console
+    const consoleLog = {
+      id: `log-${Date.now()}`,
+      method: activeTab.method || 'GET',
+      url: result.url || activeTab.url,
+      status: result.status,
+      statusText: result.statusText,
+      durationMs: result.durationMs,
+      requestHeaders: result.requestHeaders,
+      rawText: result.rawText,
+      timestamp: new Date().toISOString(),
+    };
+    setConsoleLogs((prev) => [consoleLog, ...prev.slice(0, 99)]);
   };
 
   // Save Request to Collection
@@ -584,6 +603,17 @@ export default function App() {
         collectionsCount={collections.length}
         historyCount={history.length}
         lastResponse={activeTab?.response}
+        consoleLogsCount={consoleLogs.length}
+        isConsoleOpen={isConsoleOpen}
+        onToggleConsole={() => setIsConsoleOpen(!isConsoleOpen)}
+      />
+
+      {/* Postman Console Drawer */}
+      <ConsoleDrawer
+        isOpen={isConsoleOpen}
+        onClose={() => setIsConsoleOpen(false)}
+        logs={consoleLogs}
+        onClearLogs={() => setConsoleLogs([])}
       />
 
       {/* Modals */}

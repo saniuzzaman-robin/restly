@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { CustomSelect } from './CustomSelect';
 import {
   Globe,
   Settings,
@@ -39,6 +40,11 @@ export const Header = ({
   const [showUserMenu, setShowUserMenu] = useState(false);
 
   const activeEnv = environments.find((e) => e.id === activeEnvId);
+
+  const envOptions = [
+    { value: '', label: 'No Environment' },
+    ...environments.map((env) => ({ value: env.id, label: env.name })),
+  ];
 
   return (
     <header style={{
@@ -82,19 +88,13 @@ export const Header = ({
         {/* Environment Selector & Inspector */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', position: 'relative' }}>
           <Globe size={14} color="var(--text-muted)" />
-          <select
-            className="aether-input"
+          <CustomSelect
+            options={envOptions}
             value={activeEnvId || ''}
-            onChange={(e) => onSelectEnv(e.target.value)}
-            style={{ padding: '4px 8px', fontSize: '12px', width: '140px' }}
-          >
-            <option value="">No Environment</option>
-            {environments.map((env) => (
-              <option key={env.id} value={env.id}>
-                {env.name}
-              </option>
-            ))}
-          </select>
+            onChange={onSelectEnv}
+            size="sm"
+            style={{ width: '140px' }}
+          />
 
           {/* Quick Inspector Eye */}
           {activeEnv && (

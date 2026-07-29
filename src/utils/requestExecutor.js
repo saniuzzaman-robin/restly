@@ -1,14 +1,17 @@
 /**
- * HTTP Request Execution Engine using Fetch API with environment variable resolution
+ * HTTP Request Execution Engine using Fetch API with variable resolution,
+ * multipart form files, binary payload support, cookie parsing,
+ * and Postman request settings (timeout, redirects, URL auto-encoding).
  */
 import { resolveVariables } from './variableResolver';
 
-export const executeHttpRequest = async (requestConfig, envVariables = []) => {
+export const executeHttpRequest = async (requestConfig, envVariables = [], storedCookies = []) => {
   const startTime = performance.now();
+  const settings = requestConfig.settings || {};
 
   try {
     // 1. Resolve variables in URL
-    let resolvedUrl = resolveVariables(requestConfig.url, envVariables).trim();
+    let resolvedUrl = resolveVariables(requestConfig.url || '', envVariables).trim();
 
     if (!resolvedUrl) {
       throw new Error('URL is required');
@@ -16,6 +19,15 @@ export const executeHttpRequest = async (requestConfig, envVariables = []) => {
 
     if (!/^https?:\/\//i.test(resolvedUrl)) {
       resolvedUrl = 'https://' + resolvedUrl;
+    }
+
+    // Auto-encode URL if enabled in settings (default true)
+    if (settings.autoEncodeUrl !== false) {
+      try {
+        resolvedUrl = encodeURI(resolvedUrl);
+      } catch (e) {
+        // Fallback to original
+      }
     }
 
     // 2. Build Query Parameters
@@ -38,6 +50,15 @@ export const executeHttpRequest = async (requestConfig, envVariables = []) => {
           headersObj[resolveVariables(h.key, envVariables)] = resolveVariables(h.value || '', envVariables);
         }
       });
+    }
+
+    // Auto-inject matching stored domain cookies if Cookie header not manually specified
+    if (!headersObj['Cookie'] && !headersObj['cookie'] && storedCookies?.length) {
+      const hostname = urlObj.hostname;
+      const matchingCookies = storedCookies.filter((c) => !c.domain || hostname.endsWith(c.domain) || c.domain.endsWith(hostname));
+      if (matchingCookies.length > 0) {
+        headersObj['Cookie'] = matchingCookies.map((c) => `${c.name}=${c.value}`).join('; ');
+      }
     }
 
     // 4. Handle Authentication
@@ -74,7 +95,15 @@ export const executeHttpRequest = async (requestConfig, envVariables = []) => {
           headersObj['Content-Type'] = 'application/json';
         }
       } else if (bodyMode === 'raw') {
-        fetchBody = resolveVariables(requestConfig.body?.raw || '', envVariables);
+        const rawType = requestConfig.body?.rawType || 'json';
+        fetchBody = resolveVariables(requestConfig.body?.raw || requestConfig.body?.json || '', envVariables);
+        if (!headersObj['Content-Type'] && !headersObj['content-type']) {
+          if (rawType === 'json') headersObj['Content-Type'] = 'application/json';
+          else if (rawType === 'javascript') headersObj['Content-Type'] = 'application/javascript';
+          else if (rawType === 'html') headersObj['Content-Type'] = 'text/html';
+          else if (rawType === 'xml') headersObj['Content-Type'] = 'application/xml';
+          else headersObj['Content-Type'] = 'text/plain';
+        }
       } else if (bodyMode === 'urlencoded') {
         const urlParams = new URLSearchParams();
         if (Array.isArray(requestConfig.body?.urlencoded)) {
@@ -96,34 +125,90 @@ export const executeHttpRequest = async (requestConfig, envVariables = []) => {
         if (Array.isArray(requestConfig.body?.formdata)) {
           requestConfig.body.formdata.forEach((item) => {
             if (item.enabled !== false && item.key) {
-              formData.append(
-                resolveVariables(item.key, envVariables),
-                resolveVariables(item.value || '', envVariables)
-              );
+              const key = resolveVariables(item.key, envVariables);
+              if (item.type === 'file' && item.fileObj) {
+                formData.append(key, item.fileObj);
+              } else {
+                formData.append(key, resolveVariables(item.value || '', envVariables));
+              }
             }
           });
         }
         fetchBody = formData;
+      } else if (bodyMode === 'binary' && requestConfig.body?.binaryFile?.fileObj) {
+        fetchBody = requestConfig.body.binaryFile.fileObj;
+        if (!headersObj['Content-Type']) {
+          headersObj['Content-Type'] = requestConfig.body.binaryFile.type || 'application/octet-stream';
+        }
+      } else if (bodyMode === 'graphql') {
+        let parsedVars = {};
+        if (requestConfig.body?.graphqlVariables) {
+          try {
+            parsedVars = JSON.parse(resolveVariables(requestConfig.body.graphqlVariables, envVariables));
+          } catch (e) {
+            // invalid json variables
+          }
+        }
+        const payload = {
+          query: resolveVariables(requestConfig.body?.graphqlQuery || '', envVariables),
+          variables: parsedVars,
+        };
+        fetchBody = JSON.stringify(payload);
+        if (!headersObj['Content-Type']) {
+          headersObj['Content-Type'] = 'application/json';
+        }
       }
     }
 
-    // 6. Execute Request
-    const response = await fetch(urlObj.toString(), {
+    // 6. Handle Request Timeout with AbortController
+    const controller = new AbortController();
+    let timeoutId = null;
+
+    if (settings.requestTimeoutMs > 0) {
+      timeoutId = setTimeout(() => {
+        controller.abort();
+      }, settings.requestTimeoutMs);
+    }
+
+    // 7. Execute Fetch Request
+    const fetchOptions = {
       method,
       headers: headersObj,
       body: fetchBody,
-    });
+      signal: controller.signal,
+      redirect: settings.followRedirects === false ? 'manual' : 'follow',
+    };
+
+    const response = await fetch(urlObj.toString(), fetchOptions);
+
+    if (timeoutId) clearTimeout(timeoutId);
 
     const endTime = performance.now();
     const durationMs = Math.round(endTime - startTime);
 
-    // 7. Parse Response Headers
+    // 8. Parse Response Headers & Cookies
     const responseHeaders = [];
+    const parsedCookies = [];
+
     response.headers.forEach((value, key) => {
       responseHeaders.push({ key, value });
+      if (key.toLowerCase() === 'set-cookie') {
+        const parts = value.split(';');
+        const [nameValue] = parts;
+        if (nameValue) {
+          const [cName, cVal] = nameValue.split('=');
+          parsedCookies.push({
+            name: cName?.trim(),
+            value: cVal?.trim(),
+            domain: urlObj.hostname,
+            path: '/',
+            raw: value,
+          });
+        }
+      }
     });
 
-    // 8. Read Body & Calculate Size
+    // 9. Read Response Body & Compute Size
     const contentType = response.headers.get('content-type') || '';
     const rawText = await response.text();
     const sizeBytes = new Blob([rawText]).size;
@@ -145,12 +230,14 @@ export const executeHttpRequest = async (requestConfig, envVariables = []) => {
       status: response.status,
       statusText: response.statusText,
       headers: responseHeaders,
+      cookies: parsedCookies,
       data: parsedJson !== null ? parsedJson : rawText,
       rawText,
       isJson,
       durationMs,
       sizeBytes,
       url: urlObj.toString(),
+      requestHeaders: headersObj,
       timestamp: new Date().toISOString(),
     };
   } catch (err) {
@@ -158,16 +245,19 @@ export const executeHttpRequest = async (requestConfig, envVariables = []) => {
     const durationMs = Math.round(endTime - startTime);
 
     let errorMessage = err.message || 'Network error or CORS policy restriction';
-    if (err.name === 'TypeError' && err.message.includes('fetch')) {
+    if (err.name === 'AbortError') {
+      errorMessage = `Request timed out after ${settings.requestTimeoutMs} ms.`;
+    } else if (err.name === 'TypeError' && err.message.includes('fetch')) {
       errorMessage = 'Failed to fetch. This may be caused by a CORS restriction on the target server, invalid URL, or network disconnection.';
     }
 
     return {
       success: false,
       status: 0,
-      statusText: 'Network Error / CORS',
+      statusText: err.name === 'AbortError' ? 'Request Timeout' : 'Network Error / CORS',
       errorMessage,
       headers: [],
+      cookies: [],
       data: null,
       rawText: errorMessage,
       isJson: false,

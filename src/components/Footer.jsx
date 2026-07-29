@@ -1,11 +1,14 @@
 import React from 'react';
-import { Globe, Layers, Command, CheckCircle2, Wifi } from 'lucide-react';
+import { Globe, Layers, Command, CheckCircle2, Wifi, Terminal } from 'lucide-react';
 
 export const Footer = ({
   activeEnv,
   collectionsCount = 0,
   historyCount = 0,
   lastResponse,
+  consoleLogsCount = 0,
+  isConsoleOpen = false,
+  onToggleConsole,
 }) => {
   return (
     <footer style={{
@@ -23,6 +26,30 @@ export const Footer = ({
     }}>
       {/* Left Footer Info */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        {/* Postman Console Button */}
+        <button
+          onClick={onToggleConsole}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            background: isConsoleOpen ? 'var(--accent-primary)' : 'var(--bg-tab)',
+            color: isConsoleOpen ? '#FFFFFF' : 'var(--text-main)',
+            border: '1px solid var(--border-color)',
+            padding: '2px 8px',
+            borderRadius: '4px',
+            fontWeight: '600',
+            fontSize: '11px',
+            cursor: 'pointer'
+          }}
+          title="Toggle Network Console Logs Drawer"
+        >
+          <Terminal size={12} />
+          Console {consoleLogsCount > 0 && `(${consoleLogsCount})`}
+        </button>
+
+        <div style={{ width: '1px', height: '12px', background: 'var(--border-color)' }}></div>
+
         {/* Status indicator */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <span style={{
@@ -84,7 +111,7 @@ export const Footer = ({
         <div style={{ width: '1px', height: '12px', background: 'var(--border-color)' }}></div>
 
         <span style={{ fontWeight: '600', color: 'var(--text-muted)' }}>
-          Restly v1.0
+          Restly v1.0.1
         </span>
       </div>
     </footer>

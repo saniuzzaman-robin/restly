@@ -2,12 +2,24 @@ import React, { useState } from 'react';
 import { KeyValueEditor } from './KeyValueEditor';
 import { AuthEditor } from './AuthEditor';
 import { BodyEditor } from './BodyEditor';
+import { RequestSettingsEditor } from './RequestSettingsEditor';
+import { ScriptsEditor } from './ScriptsEditor';
+import { CookiesModal } from './CookiesModal';
 import { InlineCurlImport } from './InlineCurlImport';
 import { InlineCodeSnippet } from './InlineCodeSnippet';
+import { CustomSelect } from './CustomSelect';
 import { parseCurlCommand } from '../utils/curlParser';
-import { Send, Save, Code, Sliders, FileCode, Shield, Terminal } from 'lucide-react';
+import { Send, Save, Code, Sliders, FileCode, Shield, Terminal, Cookie, Settings, Code2 } from 'lucide-react';
 
-const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'];
+const HTTP_METHOD_OPTIONS = [
+  { value: 'GET', label: 'GET' },
+  { value: 'POST', label: 'POST' },
+  { value: 'PUT', label: 'PUT' },
+  { value: 'PATCH', label: 'PATCH' },
+  { value: 'DELETE', label: 'DELETE' },
+  { value: 'OPTIONS', label: 'OPTIONS' },
+  { value: 'HEAD', label: 'HEAD' },
+];
 
 export const RequestBuilder = ({
   request,
@@ -21,6 +33,7 @@ export const RequestBuilder = ({
 }) => {
   const [activeTab, setActiveTab] = useState('params');
   const [sidePanel, setSidePanel] = useState(null); // 'curl' | 'code' | null
+  const [isCookiesOpen, setIsCookiesOpen] = useState(false);
 
   const handleMethodChange = (method) => {
     onChange({ ...request, method, isDirty: true });
@@ -59,26 +72,14 @@ export const RequestBuilder = ({
     <div className="pane-request" style={{ height: `${heightPct}%`, minHeight: '200px', display: 'flex', flexDirection: 'column' }}>
       {/* Method & URL Action Bar */}
       <div style={{ display: 'flex', gap: '8px', padding: '12px 16px', background: 'var(--bg-tab)', borderBottom: '1px solid var(--border-color)' }}>
-        {/* Method Select */}
-        <select
+        {/* Beautiful Custom Method Select */}
+        <CustomSelect
+          options={HTTP_METHOD_OPTIONS}
           value={request.method || 'GET'}
-          onChange={(e) => handleMethodChange(e.target.value)}
-          className={`method-badge ${request.method || 'GET'}`}
-          style={{
-            height: '36px',
-            fontSize: '12px',
-            fontWeight: '700',
-            cursor: 'pointer',
-            outline: 'none',
-            paddingRight: '10px'
-          }}
-        >
-          {HTTP_METHODS.map((m) => (
-            <option key={m} value={m} style={{ background: 'var(--bg-surface)', color: 'var(--text-main)' }}>
-              {m}
-            </option>
-          ))}
-        </select>
+          onChange={handleMethodChange}
+          variant="method"
+          style={{ width: '110px' }}
+        />
 
         {/* URL Input with cURL Paste Detection */}
         <div style={{ flex: 1, position: 'relative' }}>
@@ -121,9 +122,9 @@ export const RequestBuilder = ({
         </button>
       </div>
 
-      {/* Sub-Tab Navigation */}
+      {/* Sub-Tab Navigation Bar with Cookies & Settings Tabs */}
       <div className="tab-header-list" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ display: 'flex' }}>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
           <button
             className={`sub-tab-btn ${activeTab === 'params' ? 'active' : ''}`}
             onClick={() => setActiveTab('params')}
@@ -157,6 +158,33 @@ export const RequestBuilder = ({
             <Code size={13} />
             Body {request.body?.mode !== 'none' && <span className="sub-tab-count">•</span>}
           </button>
+
+          <button
+            className={`sub-tab-btn ${activeTab === 'scripts' ? 'active' : ''}`}
+            onClick={() => setActiveTab('scripts')}
+          >
+            <Code2 size={13} />
+            Scripts {(request.preRequestScript || request.testScript) && <span className="sub-tab-count">•</span>}
+          </button>
+
+          <button
+            className={`sub-tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
+            onClick={() => setActiveTab('settings')}
+          >
+            <Settings size={13} />
+            Settings
+          </button>
+
+          {/* Cookies Button alongside sub-tabs as in Postman */}
+          <button
+            className="sub-tab-btn"
+            onClick={() => setIsCookiesOpen(true)}
+            title="Manage Domain Cookies"
+            style={{ color: 'var(--accent-primary)', fontWeight: '600' }}
+          >
+            <Cookie size={13} />
+            Cookies
+          </button>
         </div>
 
         {/* Section Toggles adjacent to sub-tabs */}
@@ -182,7 +210,7 @@ export const RequestBuilder = ({
 
       {/* Main Content Area Split View */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        {/* Left Side: Params, Headers, Auth, Body */}
+        {/* Left Side: Params, Headers, Auth, Body, Scripts, Settings */}
         <div style={{
           flex: 1,
           overflowY: 'auto',
@@ -217,6 +245,22 @@ export const RequestBuilder = ({
             <BodyEditor
               body={request.body}
               onChange={(body) => onChange({ ...request, body, isDirty: true })}
+            />
+          )}
+
+          {activeTab === 'scripts' && (
+            <ScriptsEditor
+              preRequestScript={request.preRequestScript || ''}
+              testScript={request.testScript || ''}
+              onChangePreRequest={(script) => onChange({ ...request, preRequestScript: script, isDirty: true })}
+              onChangeTest={(script) => onChange({ ...request, testScript: script, isDirty: true })}
+            />
+          )}
+
+          {activeTab === 'settings' && (
+            <RequestSettingsEditor
+              settings={request.settings}
+              onChange={(settings) => onChange({ ...request, settings, isDirty: true })}
             />
           )}
         </div>
@@ -261,6 +305,12 @@ export const RequestBuilder = ({
           </div>
         )}
       </div>
+
+      {/* Cookies Management Modal */}
+      <CookiesModal
+        isOpen={isCookiesOpen}
+        onClose={() => setIsCookiesOpen(false)}
+      />
     </div>
   );
 };

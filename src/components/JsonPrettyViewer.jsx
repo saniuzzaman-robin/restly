@@ -1,90 +1,175 @@
-import React, { useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
+import { ChevronDown, ChevronRight, Maximize2, Minimize2, Copy, Check } from 'lucide-react';
 
 /**
- * Syntax-highlighted JSON viewer with line numbers and theme-aware contrast
+ * Interactive Collapsible/Expandable Tree Node for JSON Objects & Arrays
  */
-export const JsonPrettyViewer = ({ data, rawText }) => {
-  const highlightedHtml = useMemo(() => {
-    let jsonString = '';
+const JsonTreeNode = ({ name, value, isLast, depth = 0, defaultExpanded = true }) => {
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
-    if (data !== null && data !== undefined && typeof data === 'object') {
-      jsonString = JSON.stringify(data, null, 2);
-    } else if (rawText) {
-      try {
-        const parsed = JSON.parse(rawText);
-        jsonString = JSON.stringify(parsed, null, 2);
-      } catch (e) {
-        jsonString = rawText;
-      }
-    }
+  const isObject = value !== null && typeof value === 'object' && !Array.isArray(value);
+  const isArray = Array.isArray(value);
+  const isExpandable = isObject || isArray;
 
-    if (!jsonString) return { html: 'Empty Response', lineCount: 1 };
+  const indent = depth * 16;
 
-    // Escape HTML special characters
-    let escaped = jsonString
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
+  if (!isExpandable) {
+    let formattedVal = JSON.stringify(value);
+    let valColor = 'var(--json-string)';
 
-    // Syntax highlight regex
-    const syntaxRegex = /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g;
+    if (typeof value === 'number') valColor = '#38BDF8';
+    else if (typeof value === 'boolean') valColor = '#F59E0B';
+    else if (value === null) valColor = '#EF4444';
 
-    const formatted = escaped.replace(syntaxRegex, (match) => {
-      let cls = 'json-number';
-      let color = 'var(--json-number)';
+    return (
+      <div style={{ paddingLeft: `${indent}px`, lineHeight: '1.6', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+        {name !== undefined && (
+          <span style={{ color: 'var(--json-key)', fontWeight: '600' }}>"{name}": </span>
+        )}
+        <span style={{ color: valColor }}>{formattedVal}</span>
+        {!isLast && <span style={{ color: 'var(--text-muted)' }}>,</span>}
+      </div>
+    );
+  }
 
-      if (/^"/.test(match)) {
-        if (/:$/.test(match)) {
-          cls = 'json-key';
-          color = 'var(--json-key)';
-        } else {
-          cls = 'json-string';
-          color = 'var(--json-string)';
-        }
-      } else if (/true|false/.test(match)) {
-        cls = 'json-boolean';
-        color = 'var(--json-boolean)';
-      } else if (/null/.test(match)) {
-        cls = 'json-null';
-        color = 'var(--json-null)';
-      }
-
-      return `<span class="${cls}" style="color: ${color}; font-weight: ${cls === 'json-key' ? '600' : '400'}">${match}</span>`;
-    });
-
-    const lines = formatted.split('\n');
-    return {
-      lines,
-      lineCount: lines.length,
-    };
-  }, [data, rawText]);
+  const keys = Object.keys(value);
+  const itemCount = keys.length;
+  const openBracket = isArray ? '[' : '{';
+  const closeBracket = isArray ? ']' : '}';
 
   return (
-    <div style={{ display: 'flex', fontFamily: 'var(--font-mono)', fontSize: '12px', lineHeight: '1.6' }}>
-      {/* Line Numbers Column */}
-      <div style={{
-        paddingRight: '12px',
-        marginRight: '12px',
-        borderRight: '1px solid var(--border-color)',
-        color: 'var(--text-dim)',
-        textAlign: 'right',
-        userSelect: 'none',
-        minWidth: '32px'
-      }}>
-        {Array.from({ length: highlightedHtml.lineCount }).map((_, i) => (
-          <div key={i}>{i + 1}</div>
-        ))}
+    <div>
+      <div
+        onClick={() => setIsExpanded(!isExpanded)}
+        style={{
+          paddingLeft: `${indent}px`,
+          lineHeight: '1.6',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '4px',
+          userSelect: 'none'
+        }}
+      >
+        <span style={{ color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center' }}>
+          {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+        </span>
+
+        {name !== undefined && (
+          <span style={{ color: 'var(--json-key)', fontWeight: '600' }}>"{name}": </span>
+        )}
+
+        <span style={{ color: 'var(--text-main)', fontWeight: '600' }}>{openBracket}</span>
+
+        {!isExpanded && (
+          <span style={{ color: 'var(--text-dim)', fontSize: '11px', margin: '0 4px', fontStyle: 'italic' }}>
+            ... {itemCount} {itemCount === 1 ? 'item' : 'items'} ...
+          </span>
+        )}
+
+        {!isExpanded && (
+          <span style={{ color: 'var(--text-main)', fontWeight: '600' }}>{closeBracket}</span>
+        )}
+
+        {!isExpanded && !isLast && (
+          <span style={{ color: 'var(--text-muted)' }}>,</span>
+        )}
       </div>
 
-      {/* Code Area */}
-      <div style={{ flex: 1, overflowX: 'auto' }}>
-        {highlightedHtml.lines.map((lineHtml, i) => (
-          <div
-            key={i}
-            dangerouslySetInnerHTML={{ __html: lineHtml || '&nbsp;' }}
-            style={{ whiteSpace: 'pre', wordBreak: 'break-all' }}
-          />
-        ))}
+      {isExpanded && (
+        <div>
+          {keys.map((key, idx) => (
+            <JsonTreeNode
+              key={key}
+              name={isArray ? undefined : key}
+              value={value[key]}
+              isLast={idx === keys.length - 1}
+              depth={depth + 1}
+              defaultExpanded={defaultExpanded}
+            />
+          ))}
+          <div style={{ paddingLeft: `${indent + 16}px`, color: 'var(--text-main)', fontWeight: '600' }}>
+            {closeBracket}{!isLast && <span style={{ color: 'var(--text-muted)' }}>,</span>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export const JsonPrettyViewer = ({ data, rawText }) => {
+  const [expandAll, setExpandAll] = useState(true);
+  const [copied, setCopied] = useState(false);
+
+  const parsedData = useMemo(() => {
+    if (data !== null && data !== undefined && typeof data === 'object') {
+      return data;
+    }
+    if (rawText) {
+      try {
+        return JSON.parse(rawText);
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  }, [data, rawText]);
+
+  const handleCopy = () => {
+    const textToCopy = parsedData ? JSON.stringify(parsedData, null, 2) : rawText;
+    navigator.clipboard.writeText(textToCopy);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  if (!parsedData && rawText) {
+    return (
+      <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>
+        {rawText}
+      </pre>
+    );
+  }
+
+  if (!parsedData) {
+    return <div style={{ color: 'var(--text-muted)', fontSize: '12px' }}>No JSON data to display</div>;
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      {/* Controls Bar */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px dashed var(--border-color)' }}>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            className="aether-btn sm"
+            onClick={() => setExpandAll(true)}
+            title="Expand all JSON nodes"
+            style={{ fontSize: '11px', padding: '2px 8px' }}
+          >
+            <Maximize2 size={12} /> Expand All
+          </button>
+          <button
+            className="aether-btn sm"
+            onClick={() => setExpandAll(false)}
+            title="Collapse all JSON nodes"
+            style={{ fontSize: '11px', padding: '2px 8px' }}
+          >
+            <Minimize2 size={12} /> Collapse All
+          </button>
+        </div>
+
+        <button
+          className="aether-btn sm"
+          onClick={handleCopy}
+          style={{ fontSize: '11px', padding: '2px 8px' }}
+        >
+          {copied ? <Check size={12} color="#10B981" /> : <Copy size={12} />}
+          {copied ? 'Copied' : 'Copy JSON'}
+        </button>
+      </div>
+
+      {/* Tree Content */}
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', overflowX: 'auto', padding: '4px 0' }}>
+        <JsonTreeNode value={parsedData} isLast={true} depth={0} defaultExpanded={expandAll} key={expandAll ? 'exp' : 'col'} />
       </div>
     </div>
   );
