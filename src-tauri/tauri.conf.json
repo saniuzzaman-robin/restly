@@ -1,6 +1,6 @@
 {
   "productName": "Restly",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "identifier": "com.restly.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -19,10 +19,7 @@
         "resizable": true,
         "fullscreen": false
       }
-    ],
-    "security": {
-      "csp": null
-    }
+    ]
   },
   "bundle": {
     "active": true,
@@ -35,11 +32,7 @@
       "icons/icon.ico"
     ],
     "macOS": {
-      "frameworks": [],
-      "minimumSystemVersion": "10.13",
-      "exceptionDomain": "",
-      "providerShortName": null,
-      "signingIdentity": null
+      "minimumSystemVersion": "10.13"
     },
     "windows": {
       "digestAlgorithm": "sha256",
