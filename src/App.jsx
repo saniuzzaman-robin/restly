@@ -43,10 +43,14 @@ export function App() {
   const [collectionModalMode, setCollectionModalMode] = useState(null); // 'create' | 'import' | null
   const [showGoogleModal, setShowGoogleModal] = useState(false);
 
-  // Application Zoom Level (70% - 150%, Default 100%)
+  // Application Zoom Level (70% - 150%, Auto-default to 110% on XL Viewports >= 1920px width)
   const [zoomLevel, setZoomLevel] = useState(() => {
     const saved = localStorage.getItem('restly_zoom_level');
-    return saved ? parseFloat(saved) : 100;
+    if (saved) return parseFloat(saved);
+    if (typeof window !== 'undefined' && window.innerWidth >= 1920) {
+      return 110;
+    }
+    return 100;
   });
 
   // Google Sync State
@@ -81,8 +85,24 @@ export function App() {
   useEffect(() => {
     const zoomRatio = zoomLevel / 100;
     document.documentElement.style.setProperty('--app-zoom', zoomRatio.toString());
-    localStorage.setItem('restly_zoom_level', zoomLevel.toString());
   }, [zoomLevel]);
+
+  // Dynamic Window Resize Listener (Triggers 110% zoom in real-time when viewport >= 1920px)
+  useEffect(() => {
+    const handleResize = () => {
+      const saved = localStorage.getItem('restly_zoom_level');
+      if (!saved) {
+        if (window.innerWidth >= 1920) {
+          setZoomLevel(110);
+        } else {
+          setZoomLevel(100);
+        }
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Global Error & Rejection Recovery Listener to prevent stuck loading states
   useEffect(() => {
@@ -128,17 +148,22 @@ export function App() {
       // 1. Zoom In (Cmd + + or Cmd + =)
       if (key === '+' || key === '=') {
         e.preventDefault();
-        setZoomLevel((prev) => Math.min(150, Math.round(prev + 10)));
+        const nextZoom = Math.min(150, Math.round(zoomLevel + 10));
+        setZoomLevel(nextZoom);
+        localStorage.setItem('restly_zoom_level', nextZoom.toString());
       }
       // 2. Zoom Out (Cmd + -)
       else if (key === '-') {
         e.preventDefault();
-        setZoomLevel((prev) => Math.max(70, Math.round(prev - 10)));
+        const nextZoom = Math.max(70, Math.round(zoomLevel - 10));
+        setZoomLevel(nextZoom);
+        localStorage.setItem('restly_zoom_level', nextZoom.toString());
       }
       // 3. Reset Zoom (Cmd + 0)
       else if (key === '0') {
         e.preventDefault();
         setZoomLevel(100);
+        localStorage.removeItem('restly_zoom_level');
       }
       // 4. Save Request (Cmd + S)
       else if (key.toLowerCase() === 's') {
@@ -161,7 +186,7 @@ export function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeTabId, activeTab]);
+  }, [activeTabId, activeTab, zoomLevel]);
 
   // Save changes to LocalStorage
   useEffect(() => {

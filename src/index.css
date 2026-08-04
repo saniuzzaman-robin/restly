@@ -1,5 +1,13 @@
 :root {
   --base-font-size: 13px;
+  --app-zoom: 1;
+}
+
+/* Auto-default 110% zoom on Extra Large Displays (1920px+ width) */
+@media (min-width: 1920px) {
+  :root {
+    --app-zoom: 1.1;
+  }
 }
 
 /* Light Mode Tokens (Default) */
