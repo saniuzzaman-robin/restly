@@ -1,5 +1,6 @@
 import React from 'react';
 import { Globe, Layers, Command, CheckCircle2, Wifi, Terminal } from 'lucide-react';
+import packageInfo from '../../package.json';
 
 export const Footer = ({
   activeEnv,
@@ -111,7 +112,7 @@ export const Footer = ({
         <div style={{ width: '1px', height: '12px', background: 'var(--border-color)' }}></div>
 
         <span style={{ fontWeight: '600', color: 'var(--text-muted)' }}>
-          Restly v1.0.1
+          Restly v{packageInfo.version || '1.0.7'}
         </span>
       </div>
     </footer>

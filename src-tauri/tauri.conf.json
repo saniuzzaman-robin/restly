@@ -1,6 +1,6 @@
 {
   "productName": "Restly",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "identifier": "com.restly.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
