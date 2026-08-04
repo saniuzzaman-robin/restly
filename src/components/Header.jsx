@@ -5,6 +5,7 @@ import {
   Settings,
   Download,
   Upload,
+  Database,
   Eye,
   Plus,
   Zap,
@@ -25,6 +26,7 @@ export const Header = ({
   onOpenEnvModal,
   onImportCollection,
   onExportCollection,
+  onOpenBackupModal,
   onNewRequest,
   theme = 'dark',
   onToggleTheme,
@@ -148,13 +150,17 @@ export const Header = ({
 
         <div style={{ width: '1px', height: '18px', background: 'var(--border-color)' }}></div>
 
-        {/* Collection Import / Export */}
+        {/* Collection Import / Export & Backup */}
         <button className="aether-btn sm" onClick={onImportCollection} title="Import Postman Collection JSON">
           <Upload size={13} /> Import
         </button>
 
         <button className="aether-btn sm" onClick={onExportCollection} title="Export Active Collection JSON">
           <Download size={13} /> Export
+        </button>
+
+        <button className="aether-btn sm" onClick={onOpenBackupModal} title="Backup & Restore Full Workspace">
+          <Database size={13} color="var(--accent-primary)" /> Backup
         </button>
 
         <div style={{ width: '1px', height: '18px', background: 'var(--border-color)' }}></div>

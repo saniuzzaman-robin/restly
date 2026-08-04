@@ -290,4 +290,91 @@ export const clearAllStorage = () => {
   }
 };
 
+/**
+ * Export complete workspace backup into a single portable JSON file
+ */
+export const exportCompleteWorkspaceBackup = () => {
+  try {
+    const initialState = loadInitialState();
+    const backupPayload = {
+      app: 'Restly Studio',
+      version: CURRENT_STORAGE_VERSION,
+      exportedAt: new Date().toISOString(),
+      collections: initialState.collections,
+      environments: initialState.environments,
+      activeEnvId: initialState.activeEnvId,
+      history: initialState.history,
+      openTabs: initialState.openTabs,
+      activeTabId: initialState.activeTabId,
+      preferences: {
+        theme: localStorage.getItem('aether_theme') || 'dark',
+        zoomLevel: localStorage.getItem('restly_zoom_level') || '100',
+        fontSize: localStorage.getItem('restly_font_size') || '13',
+        cookies: localStorage.getItem('restly_cookies') || '[]',
+        googleClientId: localStorage.getItem('google_drive_client_id') || '',
+      },
+    };
+
+    const blob = new Blob([JSON.stringify(backupPayload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const dateStr = new Date().toISOString().split('T')[0];
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `restly-workspace-backup-${dateStr}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error('Failed to export workspace backup:', err);
+  }
+};
+
+/**
+ * Restore complete workspace from a backup JSON object
+ */
+export const importCompleteWorkspaceBackup = (backupObj) => {
+  try {
+    if (!backupObj || typeof backupObj !== 'object') {
+      throw new Error('Invalid backup object');
+    }
+
+    if (Array.isArray(backupObj.collections)) {
+      localStorage.setItem(STORAGE_KEYS.COLLECTIONS, JSON.stringify(backupObj.collections));
+    }
+
+    if (Array.isArray(backupObj.environments)) {
+      localStorage.setItem(STORAGE_KEYS.ENVIRONMENTS, JSON.stringify(backupObj.environments));
+    }
+
+    if (backupObj.activeEnvId) {
+      localStorage.setItem(STORAGE_KEYS.ACTIVE_ENV_ID, backupObj.activeEnvId);
+    }
+
+    if (Array.isArray(backupObj.history)) {
+      localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(backupObj.history));
+    }
+
+    if (Array.isArray(backupObj.openTabs)) {
+      const sanitizedTabs = backupObj.openTabs.map((t) => ({ ...t, isLoading: false, isExecuting: false }));
+      localStorage.setItem(STORAGE_KEYS.OPEN_TABS, JSON.stringify(sanitizedTabs));
+    }
+
+    if (backupObj.activeTabId) {
+      localStorage.setItem(STORAGE_KEYS.ACTIVE_TAB_ID, backupObj.activeTabId);
+    }
+
+    if (backupObj.preferences) {
+      if (backupObj.preferences.theme) localStorage.setItem('aether_theme', backupObj.preferences.theme);
+      if (backupObj.preferences.zoomLevel) localStorage.setItem('restly_zoom_level', backupObj.preferences.zoomLevel);
+      if (backupObj.preferences.fontSize) localStorage.setItem('restly_font_size', backupObj.preferences.fontSize);
+      if (backupObj.preferences.cookies) localStorage.setItem('restly_cookies', backupObj.preferences.cookies);
+      if (backupObj.preferences.googleClientId) localStorage.setItem('google_drive_client_id', backupObj.preferences.googleClientId);
+    }
+
+    localStorage.setItem(STORAGE_VERSION_KEY, CURRENT_STORAGE_VERSION);
+  } catch (err) {
+    console.error('Failed to import workspace backup:', err);
+    throw err;
+  }
+};
+
 export { STORAGE_KEYS };

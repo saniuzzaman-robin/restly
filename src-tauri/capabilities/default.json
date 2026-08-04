@@ -2,5 +2,9 @@
   "identifier": "default",
   "description": "Default permissions capability for Restly desktop application",
   "windows": ["main"],
-  "permissions": ["core:default", "opener:default"]
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "http:default"
+  ]
 }

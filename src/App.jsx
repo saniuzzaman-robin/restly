@@ -8,6 +8,7 @@ import { EnvironmentModal } from './components/EnvironmentModal';
 import { CollectionModal } from './components/CollectionModal';
 import { GoogleAuthModal } from './components/GoogleAuthModal';
 import { SaveRequestModal } from './components/SaveRequestModal';
+import { BackupRestoreModal } from './components/BackupRestoreModal';
 import { SplitResizer } from './components/SplitResizer';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Footer } from './components/Footer';
@@ -32,6 +33,8 @@ const loadStoredCookies = () => {
 export function App() {
   // Load initial persistent state
   const initialState = loadInitialState();
+
+  const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
 
   const [collections, setCollections] = useState(initialState.collections);
   const [environments, setEnvironments] = useState(initialState.environments);
@@ -668,6 +671,7 @@ export function App() {
           onOpenEnvModal={() => setShowEnvModal(true)}
           onImportCollection={() => setCollectionModalMode('import')}
           onExportCollection={handleExportCollection}
+          onOpenBackupModal={() => setIsBackupModalOpen(true)}
           onNewRequest={handleAddTab}
           theme={theme}
           onToggleTheme={handleToggleTheme}
@@ -798,6 +802,11 @@ export function App() {
             onLoginSuccess={handleGoogleLogin}
           />
         )}
+
+        <BackupRestoreModal
+          isOpen={isBackupModalOpen}
+          onClose={() => setIsBackupModalOpen(false)}
+        />
       </div>
     </ErrorBoundary>
   );

@@ -2,7 +2,8 @@
  * HTTP Request Execution Engine using Fetch API with variable resolution,
  * multipart form files, binary payload support, cookie parsing,
  * Postman request settings (timeout, redirects, URL auto-encoding),
- * Native Local Node.js Proxy Engine for zero CORS restrictions,
+ * Native Rust HTTP Client via @tauri-apps/plugin-http for zero WebKit CORS in Desktop App,
+ * Native Local Node.js Proxy Engine for web dev mode,
  * and request cancellation support via AbortSignal.
  */
 import { resolveVariables } from './variableResolver';
@@ -183,7 +184,7 @@ export const executeHttpRequest = async (requestConfig, envVariables = [], store
       }, settings.requestTimeoutMs);
     }
 
-    // 7. Execute Fetch Request with Native Local Node.js Proxy Fallback
+    // 7. Execute Fetch Request using Native Rust Client in Desktop App (or Native Local Proxy in Web Dev)
     const targetUrl = urlObj.toString();
     const fetchOptions = {
       method,
@@ -193,15 +194,38 @@ export const executeHttpRequest = async (requestConfig, envVariables = [], store
       redirect: settings.followRedirects === false ? 'manual' : 'follow',
     };
 
+    const isTauri = typeof window !== 'undefined' && (
+      !!window.__TAURI_INTERNALS__ ||
+      !!window.__TAURI__ ||
+      window.location.protocol === 'tauri:' ||
+      window.location.hostname === 'tauri.localhost' ||
+      window.location.hostname.endsWith('.localhost') ||
+      (typeof navigator !== 'undefined' && navigator.userAgent?.includes('Tauri'))
+    );
+    const isViteDev = typeof import.meta !== 'undefined' && !!import.meta.env?.DEV;
+
+    let fetchFn = fetch;
+
+    // Use Native Rust HTTP Client in Desktop App to bypass WebKit CORS completely
+    if (isTauri) {
+      try {
+        const tauriHttp = await import('@tauri-apps/plugin-http');
+        if (tauriHttp && tauriHttp.fetch) {
+          fetchFn = tauriHttp.fetch;
+        }
+      } catch (e) {
+        console.warn('Native Tauri HTTP plugin import fallback to window.fetch', e);
+      }
+    }
+
     let response;
     let usedCorsProxy = false;
 
     try {
-      response = await fetch(targetUrl, fetchOptions);
+      response = await fetchFn(targetUrl, fetchOptions);
     } catch (directErr) {
-      // If direct fetch failed due to CORS / Network restriction and was NOT cancelled by user or timeout
-      if (directErr.name !== 'AbortError' && !controller.signal.aborted) {
-        // Retry exclusively using Native Local Node.js Dev Server Proxy (/api-proxy)
+      // Retry via Vite local dev server proxy ONLY in Web Dev Mode
+      if (isViteDev && !isTauri && directErr.name !== 'AbortError' && !controller.signal.aborted) {
         try {
           const localProxyUrl = `/api-proxy?url=${encodeURIComponent(targetUrl)}`;
           response = await fetch(localProxyUrl, fetchOptions);
@@ -223,31 +247,39 @@ export const executeHttpRequest = async (requestConfig, envVariables = [], store
     const responseHeaders = [];
     const parsedCookies = [];
 
-    response.headers.forEach((value, key) => {
-      responseHeaders.push({ key, value });
-      if (key.toLowerCase() === 'set-cookie') {
-        const parts = value.split(';');
-        const [nameValue] = parts;
-        if (nameValue) {
-          const [cName, cVal] = nameValue.split('=');
-          parsedCookies.push({
-            name: cName?.trim(),
-            value: cVal?.trim(),
-            domain: urlObj.hostname,
-            path: '/',
-            raw: value,
-          });
+    if (response.headers && typeof response.headers.forEach === 'function') {
+      response.headers.forEach((value, key) => {
+        responseHeaders.push({ key, value });
+        if (key.toLowerCase() === 'set-cookie') {
+          const parts = value.split(';');
+          const [nameValue] = parts;
+          if (nameValue) {
+            const [cName, cVal] = nameValue.split('=');
+            parsedCookies.push({
+              name: cName?.trim(),
+              value: cVal?.trim(),
+              domain: urlObj.hostname,
+              path: '/',
+              raw: value,
+            });
+          }
         }
-      }
-    });
+      });
+    }
 
     if (usedCorsProxy) {
       responseHeaders.push({ key: 'X-Restly-CORS-Bypass', value: 'Active via Native Local Proxy' });
     }
 
     // 9. Read Response Body & Compute Size
-    const contentType = response.headers.get('content-type') || '';
+    const contentType = response.headers?.get ? (response.headers.get('content-type') || '') : '';
     const rawText = await response.text();
+
+    // Guard against local SPA index.html fallback
+    if (usedCorsProxy && (rawText.includes('<title>Restly') || rawText.includes('<div id="root">'))) {
+      throw new Error('Local dev proxy endpoint returned HTML fallback page. Direct fetch should be used in production.');
+    }
+
     const sizeBytes = new Blob([rawText]).size;
 
     let parsedJson = null;
