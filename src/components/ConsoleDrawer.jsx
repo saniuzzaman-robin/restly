@@ -119,34 +119,55 @@ export const ConsoleDrawer = ({ isOpen, onClose, logs = [], onClearLogs }) => {
 
         {/* Right Side: Selected Log Detail */}
         {selectedLog && (
-          <div style={{ width: '450px', overflowY: 'auto', padding: '12px 16px', background: 'var(--bg-tab)', fontSize: '11px' }}>
-            <div style={{ fontWeight: '700', color: 'var(--accent-primary)', marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span>REQUEST DETAILS</span>
+          <div style={{ width: '480px', overflowY: 'auto', padding: '12px 16px', background: 'var(--bg-tab)', fontSize: '11px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ fontWeight: '700', color: 'var(--accent-primary)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>NETWORK REQUEST DETAILS</span>
               <button onClick={() => setSelectedLog(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
                 <X size={12} />
               </button>
             </div>
 
-            <div style={{ marginBottom: '8px', color: 'var(--text-main)', wordBreak: 'break-all' }}>
-              <strong>URL:</strong> {selectedLog.url}
+            <div style={{ color: 'var(--text-main)', wordBreak: 'break-all', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span className={`method-badge ${selectedLog.method || 'GET'}`} style={{ fontSize: '10px', padding: '2px 6px' }}>
+                {selectedLog.method || 'GET'}
+              </span>
+              <span>{selectedLog.url}</span>
             </div>
 
-            <div style={{ marginBottom: '8px', color: 'var(--text-main)' }}>
-              <strong>Status:</strong> {selectedLog.status} {selectedLog.statusText}
+            <div style={{ color: 'var(--text-main)' }}>
+              <strong>Status:</strong>{' '}
+              <span style={{ color: selectedLog.status >= 200 && selectedLog.status < 300 ? '#10B981' : '#EF4444', fontWeight: '700' }}>
+                {selectedLog.status} {selectedLog.statusText}
+              </span>{' '}
+              ({selectedLog.durationMs} ms)
             </div>
 
-            <div style={{ marginBottom: '8px' }}>
+            {/* Request Headers */}
+            <div>
               <strong style={{ color: 'var(--text-muted)' }}>Request Headers:</strong>
-              <pre style={{ background: 'var(--bg-surface)', padding: '8px', borderRadius: '4px', overflowX: 'auto', marginTop: '4px' }}>
-                {JSON.stringify(selectedLog.requestHeaders || {}, null, 2)}
+              <pre style={{ background: 'var(--bg-surface)', padding: '8px', borderRadius: '4px', overflowX: 'auto', marginTop: '4px', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '10px' }}>
+                {selectedLog.requestHeaders && Object.keys(selectedLog.requestHeaders).length > 0
+                  ? JSON.stringify(selectedLog.requestHeaders, null, 2)
+                  : '(No request headers specified)'}
               </pre>
             </div>
 
+            {/* Request Body Payload */}
+            {selectedLog.requestBody && (
+              <div>
+                <strong style={{ color: 'var(--text-muted)' }}>Request Body Payload:</strong>
+                <pre style={{ background: 'var(--bg-surface)', padding: '8px', borderRadius: '4px', overflowX: 'auto', marginTop: '4px', maxHeight: '100px', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '10px' }}>
+                  {typeof selectedLog.requestBody === 'string' ? selectedLog.requestBody : JSON.stringify(selectedLog.requestBody, null, 2)}
+                </pre>
+              </div>
+            )}
+
+            {/* Response Body Snippet */}
             {selectedLog.rawText && (
               <div>
                 <strong style={{ color: 'var(--text-muted)' }}>Response Body Snippet:</strong>
-                <pre style={{ background: 'var(--bg-surface)', padding: '8px', borderRadius: '4px', overflowX: 'auto', marginTop: '4px', maxHeight: '100px' }}>
-                  {selectedLog.rawText.substring(0, 500)}
+                <pre style={{ background: 'var(--bg-surface)', padding: '8px', borderRadius: '4px', overflowX: 'auto', marginTop: '4px', maxHeight: '100px', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '10px' }}>
+                  {selectedLog.rawText.substring(0, 1000)}
                 </pre>
               </div>
             )}

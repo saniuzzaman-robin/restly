@@ -1,12 +1,15 @@
 /**
- * HTTP Request Execution Engine using Fetch API with variable resolution,
- * multipart form files, binary payload support, cookie parsing,
- * Postman request settings (timeout, redirects, URL auto-encoding),
- * Native Rust HTTP Client via @tauri-apps/plugin-http for zero WebKit CORS in Desktop App,
- * Native Local Node.js Proxy Engine for web dev mode,
- * and request cancellation support via AbortSignal.
+ * Postman-Architecture HTTP Request Execution Engine
+ *
+ * Desktop Mode (macOS / Windows):
+ * Routes 100% of HTTP execution through Native Rust Sockets via 'execute_native_http' (reqwest).
+ * Completely bypasses WebKit/Chromium browser engine, CORS policies, Origin headers, and SSL restrictions.
+ *
+ * Web Mode (Local Dev / Web):
+ * Uses standard Fetch API with local Node.js proxy fallback (/api-proxy).
  */
 import { resolveVariables } from './variableResolver';
+import { invoke } from '@tauri-apps/api/core';
 
 export const executeHttpRequest = async (requestConfig, envVariables = [], storedCookies = [], externalSignal = null) => {
   const startTime = performance.now();
@@ -15,7 +18,6 @@ export const executeHttpRequest = async (requestConfig, envVariables = [], store
   // Initialize AbortController
   const controller = new AbortController();
 
-  // If external AbortSignal is provided (e.g. user clicked Cancel), listen to it
   if (externalSignal) {
     if (externalSignal.aborted) {
       controller.abort();
@@ -23,6 +25,11 @@ export const executeHttpRequest = async (requestConfig, envVariables = [], store
       externalSignal.addEventListener('abort', () => controller.abort(), { once: true });
     }
   }
+
+  const method = (requestConfig.method || 'GET').toUpperCase();
+  const headersObj = {};
+  let fetchBody = null;
+  let targetUrl = '';
 
   try {
     // 1. Resolve variables in URL
@@ -49,20 +56,23 @@ export const executeHttpRequest = async (requestConfig, envVariables = [], store
     const urlObj = new URL(resolvedUrl);
     if (Array.isArray(requestConfig.params)) {
       requestConfig.params.forEach((param) => {
-        if (param.enabled !== false && param.key) {
-          const resolvedKey = resolveVariables(param.key, envVariables);
+        if (param.enabled !== false && param.key && param.key.trim()) {
+          const resolvedKey = resolveVariables(param.key.trim(), envVariables);
           const resolvedVal = resolveVariables(param.value || '', envVariables);
           urlObj.searchParams.append(resolvedKey, resolvedVal);
         }
       });
     }
 
+    targetUrl = urlObj.toString();
+
     // 3. Build Headers
-    const headersObj = {};
     if (Array.isArray(requestConfig.headers)) {
       requestConfig.headers.forEach((h) => {
-        if (h.enabled !== false && h.key) {
-          headersObj[resolveVariables(h.key, envVariables)] = resolveVariables(h.value || '', envVariables);
+        if (h.enabled !== false && h.key && h.key.trim()) {
+          const resolvedKey = resolveVariables(h.key.trim(), envVariables);
+          const resolvedVal = resolveVariables(h.value || '', envVariables);
+          headersObj[resolvedKey] = resolvedVal;
         }
       });
     }
@@ -87,19 +97,17 @@ export const executeHttpRequest = async (requestConfig, envVariables = [], store
       const creds = btoa(`${u}:${p}`);
       headersObj['Authorization'] = `Basic ${creds}`;
     } else if (auth.type === 'apikey' && auth.key && auth.value) {
-      const k = resolveVariables(auth.key, envVariables);
+      const k = resolveVariables(auth.key.trim(), envVariables);
       const v = resolveVariables(auth.value, envVariables);
       if (auth.addTo === 'query') {
         urlObj.searchParams.append(k, v);
+        targetUrl = urlObj.toString();
       } else {
         headersObj[k] = v;
       }
     }
 
     // 5. Build Request Body
-    let fetchBody = null;
-    const method = (requestConfig.method || 'GET').toUpperCase();
-
     if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
       const bodyMode = requestConfig.body?.mode || 'none';
 
@@ -125,7 +133,7 @@ export const executeHttpRequest = async (requestConfig, envVariables = [], store
           requestConfig.body.urlencoded.forEach((item) => {
             if (item.enabled !== false && item.key) {
               urlParams.append(
-                resolveVariables(item.key, envVariables),
+                resolveVariables(item.key.trim(), envVariables),
                 resolveVariables(item.value || '', envVariables)
               );
             }
@@ -140,7 +148,7 @@ export const executeHttpRequest = async (requestConfig, envVariables = [], store
         if (Array.isArray(requestConfig.body?.formdata)) {
           requestConfig.body.formdata.forEach((item) => {
             if (item.enabled !== false && item.key) {
-              const key = resolveVariables(item.key, envVariables);
+              const key = resolveVariables(item.key.trim(), envVariables);
               if (item.type === 'file' && item.fileObj) {
                 formData.append(key, item.fileObj);
               } else {
@@ -184,8 +192,90 @@ export const executeHttpRequest = async (requestConfig, envVariables = [], store
       }, settings.requestTimeoutMs);
     }
 
-    // 7. Execute Fetch Request using Native Rust Client in Desktop App (or Native Local Proxy in Web Dev)
-    const targetUrl = urlObj.toString();
+    // 7. Postman-style Execution: Route 100% through Native Rust Sockets in Desktop App
+    try {
+      let tauriBody = fetchBody;
+      if (tauriBody instanceof URLSearchParams) {
+        tauriBody = tauriBody.toString();
+      } else if (tauriBody && typeof tauriBody === 'object' && !(tauriBody instanceof ArrayBuffer) && !(tauriBody instanceof Uint8Array)) {
+        if (tauriBody instanceof FormData) {
+          const params = new URLSearchParams();
+          for (const [k, v] of tauriBody.entries()) {
+            if (typeof v === 'string') params.append(k, v);
+          }
+          tauriBody = params.toString();
+        } else {
+          tauriBody = JSON.stringify(tauriBody);
+        }
+      }
+
+      const nativeRes = await invoke('execute_native_http', {
+        req: {
+          url: targetUrl,
+          method,
+          headers: headersObj,
+          body: tauriBody || null,
+          timeout_ms: settings.requestTimeoutMs || 30000,
+        },
+      });
+
+      if (timeoutId) clearTimeout(timeoutId);
+
+      let parsedJson = null;
+      let isJson = false;
+      const rawText = nativeRes.raw_text || '';
+
+      if (rawText.trim().startsWith('{') || rawText.trim().startsWith('[')) {
+        try {
+          parsedJson = JSON.parse(rawText);
+          isJson = true;
+        } catch (e) {
+          // Not valid JSON
+        }
+      }
+
+      return {
+        success: nativeRes.status >= 200 && nativeRes.status < 400,
+        status: nativeRes.status,
+        statusText: nativeRes.status_text,
+        headers: nativeRes.headers || [],
+        cookies: [],
+        data: parsedJson !== null ? parsedJson : rawText,
+        rawText,
+        isJson,
+        durationMs: nativeRes.duration_ms,
+        sizeBytes: new Blob([rawText]).size,
+        url: targetUrl,
+        method,
+        requestHeaders: headersObj,
+        requestBody: typeof fetchBody === 'string' ? fetchBody : (fetchBody ? String(fetchBody) : null),
+        timestamp: new Date().toISOString(),
+      };
+    } catch (nativeErr) {
+      const isWebBrowser = typeof window !== 'undefined' && !window.__TAURI_INTERNALS__ && !window.__TAURI__;
+      if (!isWebBrowser) {
+        console.error('Native Rust HTTP Engine Execution Error:', nativeErr);
+        return {
+          success: false,
+          status: 0,
+          statusText: 'Native Request Error',
+          errorMessage: typeof nativeErr === 'string' ? nativeErr : (nativeErr?.message || JSON.stringify(nativeErr)),
+          headers: [],
+          cookies: [],
+          data: null,
+          rawText: typeof nativeErr === 'string' ? nativeErr : (nativeErr?.message || JSON.stringify(nativeErr)),
+          isJson: false,
+          durationMs: 0,
+          sizeBytes: 0,
+          url: targetUrl,
+          method,
+          requestHeaders: headersObj,
+          timestamp: new Date().toISOString(),
+        };
+      }
+    }
+
+    // Web Fallback for browser execution in local dev server
     const fetchOptions = {
       method,
       headers: headersObj,
@@ -194,45 +284,17 @@ export const executeHttpRequest = async (requestConfig, envVariables = [], store
       redirect: settings.followRedirects === false ? 'manual' : 'follow',
     };
 
-    const isTauri = typeof window !== 'undefined' && (
-      !!window.__TAURI_INTERNALS__ ||
-      !!window.__TAURI__ ||
-      window.location.protocol === 'tauri:' ||
-      window.location.hostname === 'tauri.localhost' ||
-      window.location.hostname.endsWith('.localhost') ||
-      (typeof navigator !== 'undefined' && navigator.userAgent?.includes('Tauri'))
-    );
-    const isViteDev = typeof import.meta !== 'undefined' && !!import.meta.env?.DEV;
-
-    let fetchFn = fetch;
-
-    // Use Native Rust HTTP Client in Desktop App to bypass WebKit CORS completely
-    if (isTauri) {
-      try {
-        const tauriHttp = await import('@tauri-apps/plugin-http');
-        if (tauriHttp && tauriHttp.fetch) {
-          fetchFn = tauriHttp.fetch;
-        }
-      } catch (e) {
-        console.warn('Native Tauri HTTP plugin import fallback to window.fetch', e);
-      }
-    }
-
     let response;
     let usedCorsProxy = false;
+    const isViteDev = typeof import.meta !== 'undefined' && !!import.meta.env?.DEV;
 
     try {
-      response = await fetchFn(targetUrl, fetchOptions);
+      response = await fetch(targetUrl, fetchOptions);
     } catch (directErr) {
-      // Retry via Vite local dev server proxy ONLY in Web Dev Mode
-      if (isViteDev && !isTauri && directErr.name !== 'AbortError' && !controller.signal.aborted) {
-        try {
-          const localProxyUrl = `/api-proxy?url=${encodeURIComponent(targetUrl)}`;
-          response = await fetch(localProxyUrl, fetchOptions);
-          usedCorsProxy = true;
-        } catch (localProxyErr) {
-          throw directErr;
-        }
+      if (isViteDev && directErr.name !== 'AbortError' && !controller.signal.aborted) {
+        const localProxyUrl = `/api-proxy?url=${encodeURIComponent(targetUrl)}`;
+        response = await fetch(localProxyUrl, fetchOptions);
+        usedCorsProxy = true;
       } else {
         throw directErr;
       }
@@ -243,49 +305,20 @@ export const executeHttpRequest = async (requestConfig, envVariables = [], store
     const endTime = performance.now();
     const durationMs = Math.round(endTime - startTime);
 
-    // 8. Parse Response Headers & Cookies
     const responseHeaders = [];
-    const parsedCookies = [];
-
     if (response.headers && typeof response.headers.forEach === 'function') {
       response.headers.forEach((value, key) => {
         responseHeaders.push({ key, value });
-        if (key.toLowerCase() === 'set-cookie') {
-          const parts = value.split(';');
-          const [nameValue] = parts;
-          if (nameValue) {
-            const [cName, cVal] = nameValue.split('=');
-            parsedCookies.push({
-              name: cName?.trim(),
-              value: cVal?.trim(),
-              domain: urlObj.hostname,
-              path: '/',
-              raw: value,
-            });
-          }
-        }
       });
     }
 
-    if (usedCorsProxy) {
-      responseHeaders.push({ key: 'X-Restly-CORS-Bypass', value: 'Active via Native Local Proxy' });
-    }
-
-    // 9. Read Response Body & Compute Size
-    const contentType = response.headers?.get ? (response.headers.get('content-type') || '') : '';
     const rawText = await response.text();
-
-    // Guard against local SPA index.html fallback
-    if (usedCorsProxy && (rawText.includes('<title>Restly') || rawText.includes('<div id="root">'))) {
-      throw new Error('Local dev proxy endpoint returned HTML fallback page. Direct fetch should be used in production.');
-    }
-
     const sizeBytes = new Blob([rawText]).size;
 
     let parsedJson = null;
     let isJson = false;
 
-    if (contentType.includes('application/json') || (rawText.trim().startsWith('{') || rawText.trim().startsWith('['))) {
+    if (rawText.trim().startsWith('{') || rawText.trim().startsWith('[')) {
       try {
         parsedJson = JSON.parse(rawText);
         isJson = true;
@@ -299,14 +332,16 @@ export const executeHttpRequest = async (requestConfig, envVariables = [], store
       status: response.status,
       statusText: response.statusText,
       headers: responseHeaders,
-      cookies: parsedCookies,
+      cookies: [],
       data: parsedJson !== null ? parsedJson : rawText,
       rawText,
       isJson,
       durationMs,
       sizeBytes,
       url: targetUrl,
+      method,
       requestHeaders: headersObj,
+      requestBody: typeof fetchBody === 'string' ? fetchBody : (fetchBody ? String(fetchBody) : null),
       usedCorsProxy,
       timestamp: new Date().toISOString(),
     };
@@ -338,8 +373,10 @@ export const executeHttpRequest = async (requestConfig, envVariables = [], store
       isCancelled: isUserCancelled,
       durationMs,
       sizeBytes: 0,
-      url: requestConfig.url || '',
-      requestHeaders: {},
+      url: targetUrl || requestConfig.url || '',
+      method,
+      requestHeaders: headersObj,
+      requestBody: typeof fetchBody === 'string' ? fetchBody : (fetchBody ? String(fetchBody) : null),
       timestamp: new Date().toISOString(),
     };
   }

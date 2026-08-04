@@ -217,6 +217,8 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .method-badge.GET { color: var(--method-get); background: var(--method-get-bg); border: 1px solid var(--method-get); }
 .method-badge.POST { color: var(--method-post); background: var(--method-post-bg); border: 1px solid var(--method-post); }

@@ -69,7 +69,12 @@ function nativeLocalProxyPlugin() {
             res.end(JSON.stringify({ error: 'Local Proxy Execution Failed', details: err.message }));
           });
 
-          req.pipe(proxyReq);
+          const method = req.method ? req.method.toUpperCase() : 'GET';
+          if (['GET', 'HEAD', 'DELETE'].includes(method)) {
+            proxyReq.end();
+          } else {
+            req.pipe(proxyReq);
+          }
         } catch (err) {
           res.statusCode = 500;
           res.setHeader('Content-Type', 'application/json');

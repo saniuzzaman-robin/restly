@@ -1,6 +1,6 @@
 {
   "productName": "Restly",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "identifier": "com.restly.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -9,6 +9,7 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "title": "Restly — API Workspace",

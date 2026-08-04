@@ -482,22 +482,61 @@ export const ResponseViewer = ({ response, activeTab: externalTab, onTabChange }
 
         {/* HEADERS TAB */}
         {activeTab === 'headers' && (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)', textAlign: 'left' }}>
-                <th style={{ padding: '6px 12px', width: '35%' }}>KEY</th>
-                <th style={{ padding: '6px 12px' }}>VALUE</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(response.headers || []).map((h, idx) => (
-                <tr key={idx} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                  <td style={{ padding: '6px 12px', color: 'var(--accent-primary)', fontWeight: '600' }}>{h.key}</td>
-                  <td style={{ padding: '6px 12px', color: 'var(--text-main)', wordBreak: 'break-all' }}>{h.value}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {/* Request Headers Section */}
+            <div>
+              <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', letterSpacing: '0.5px', marginBottom: '8px', textTransform: 'uppercase' }}>
+                Request Headers ({response.requestHeaders ? Object.keys(response.requestHeaders).length : 0})
+              </div>
+              {response.requestHeaders && Object.keys(response.requestHeaders).length > 0 ? (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)', textAlign: 'left' }}>
+                      <th style={{ padding: '6px 12px', width: '35%' }}>KEY</th>
+                      <th style={{ padding: '6px 12px' }}>VALUE</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(response.requestHeaders).map(([k, v], idx) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                        <td style={{ padding: '6px 12px', color: 'var(--accent-primary)', fontWeight: '600' }}>{k}</td>
+                        <td style={{ padding: '6px 12px', color: 'var(--text-main)', wordBreak: 'break-all' }}>{v}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', padding: '6px 12px' }}>No request headers specified.</div>
+              )}
+            </div>
+
+            {/* Response Headers Section */}
+            <div>
+              <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', letterSpacing: '0.5px', marginBottom: '8px', textTransform: 'uppercase' }}>
+                Response Headers ({response.headers?.length || 0})
+              </div>
+              {(response.headers || []).length > 0 ? (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)', textAlign: 'left' }}>
+                      <th style={{ padding: '6px 12px', width: '35%' }}>KEY</th>
+                      <th style={{ padding: '6px 12px' }}>VALUE</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(response.headers || []).map((h, idx) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                        <td style={{ padding: '6px 12px', color: 'var(--accent-primary)', fontWeight: '600' }}>{h.key}</td>
+                        <td style={{ padding: '6px 12px', color: 'var(--text-main)', wordBreak: 'break-all' }}>{h.value}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', padding: '6px 12px' }}>No response headers received.</div>
+              )}
+            </div>
+          </div>
         )}
 
         {/* COOKIES TAB */}
