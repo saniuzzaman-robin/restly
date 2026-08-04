@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, Maximize2, Minimize2, Copy, Check } from 'lu
 
 /**
  * Interactive Collapsible/Expandable Tree Node for JSON Objects & Arrays
+ * Fixes indentation alignment so opening & closing brackets share exact padding.
  */
 const JsonTreeNode = ({ name, value, isLast, depth = 0, defaultExpanded = true }) => {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
@@ -11,20 +12,20 @@ const JsonTreeNode = ({ name, value, isLast, depth = 0, defaultExpanded = true }
   const isArray = Array.isArray(value);
   const isExpandable = isObject || isArray;
 
-  const indent = depth * 16;
+  const indent = depth * 20; // 20px clean indentation per depth level
 
   if (!isExpandable) {
     let formattedVal = JSON.stringify(value);
-    let valColor = 'var(--json-string)';
+    let valColor = 'var(--json-string, #A7F3D0)';
 
     if (typeof value === 'number') valColor = '#38BDF8';
     else if (typeof value === 'boolean') valColor = '#F59E0B';
     else if (value === null) valColor = '#EF4444';
 
     return (
-      <div style={{ paddingLeft: `${indent}px`, lineHeight: '1.6', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+      <div style={{ paddingLeft: `${indent + 20}px`, lineHeight: '1.7', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
         {name !== undefined && (
-          <span style={{ color: 'var(--json-key)', fontWeight: '600' }}>"{name}": </span>
+          <span style={{ color: 'var(--json-key, #38BDF8)', fontWeight: '600' }}>"{name}": </span>
         )}
         <span style={{ color: valColor }}>{formattedVal}</span>
         {!isLast && <span style={{ color: 'var(--text-muted)' }}>,</span>}
@@ -38,31 +39,30 @@ const JsonTreeNode = ({ name, value, isLast, depth = 0, defaultExpanded = true }
   const closeBracket = isArray ? ']' : '}';
 
   return (
-    <div>
+    <div style={{ lineHeight: '1.7' }}>
       <div
         onClick={() => setIsExpanded(!isExpanded)}
         style={{
           paddingLeft: `${indent}px`,
-          lineHeight: '1.6',
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
           gap: '4px',
-          userSelect: 'none'
+          userSelect: 'none',
         }}
       >
-        <span style={{ color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center' }}>
+        <span style={{ color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', width: '16px', justifyContent: 'center' }}>
           {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
         </span>
 
         {name !== undefined && (
-          <span style={{ color: 'var(--json-key)', fontWeight: '600' }}>"{name}": </span>
+          <span style={{ color: 'var(--json-key, #38BDF8)', fontWeight: '600' }}>"{name}": </span>
         )}
 
         <span style={{ color: 'var(--text-main)', fontWeight: '600' }}>{openBracket}</span>
 
         {!isExpanded && (
-          <span style={{ color: 'var(--text-dim)', fontSize: '11px', margin: '0 4px', fontStyle: 'italic' }}>
+          <span style={{ color: 'var(--text-dim)', fontSize: '11px', margin: '0 6px', fontStyle: 'italic' }}>
             ... {itemCount} {itemCount === 1 ? 'item' : 'items'} ...
           </span>
         )}
@@ -88,7 +88,8 @@ const JsonTreeNode = ({ name, value, isLast, depth = 0, defaultExpanded = true }
               defaultExpanded={defaultExpanded}
             />
           ))}
-          <div style={{ paddingLeft: `${indent + 16}px`, color: 'var(--text-main)', fontWeight: '600' }}>
+          {/* Closing bracket aligned at exact opening depth level + 20px padding */}
+          <div style={{ paddingLeft: `${indent + 20}px`, color: 'var(--text-main)', fontWeight: '600' }}>
             {closeBracket}{!isLast && <span style={{ color: 'var(--text-muted)' }}>,</span>}
           </div>
         </div>
@@ -124,7 +125,16 @@ export const JsonPrettyViewer = ({ data, rawText }) => {
 
   if (!parsedData && rawText) {
     return (
-      <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>
+      <pre style={{
+        margin: 0,
+        whiteSpace: 'pre-wrap',
+        wordBreak: 'break-word',
+        color: 'var(--text-main)',
+        fontFamily: "'Fira Code', 'JetBrains Mono', 'Menlo', 'Monaco', 'Consolas', monospace",
+        lineHeight: '1.7',
+        fontSize: '12px',
+        tabSize: 2
+      }}>
         {rawText}
       </pre>
     );
@@ -168,7 +178,13 @@ export const JsonPrettyViewer = ({ data, rawText }) => {
       </div>
 
       {/* Tree Content */}
-      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', overflowX: 'auto', padding: '4px 0' }}>
+      <div style={{
+        fontFamily: "'Fira Code', 'JetBrains Mono', 'Menlo', 'Monaco', 'Consolas', monospace",
+        fontSize: '12px',
+        overflowX: 'auto',
+        padding: '6px 0',
+        lineHeight: '1.7'
+      }}>
         <JsonTreeNode value={parsedData} isLast={true} depth={0} defaultExpanded={expandAll} key={expandAll ? 'exp' : 'col'} />
       </div>
     </div>

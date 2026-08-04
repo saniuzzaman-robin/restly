@@ -1,13 +1,26 @@
 /**
  * HTTP Request Execution Engine using Fetch API with variable resolution,
  * multipart form files, binary payload support, cookie parsing,
- * and Postman request settings (timeout, redirects, URL auto-encoding).
+ * Postman request settings (timeout, redirects, URL auto-encoding),
+ * and request cancellation support via AbortSignal.
  */
 import { resolveVariables } from './variableResolver';
 
-export const executeHttpRequest = async (requestConfig, envVariables = [], storedCookies = []) => {
+export const executeHttpRequest = async (requestConfig, envVariables = [], storedCookies = [], externalSignal = null) => {
   const startTime = performance.now();
   const settings = requestConfig.settings || {};
+
+  // Initialize AbortController
+  const controller = new AbortController();
+
+  // If external AbortSignal is provided (e.g. user clicked Cancel), listen to it
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      controller.abort();
+    } else {
+      externalSignal.addEventListener('abort', () => controller.abort(), { once: true });
+    }
+  }
 
   try {
     // 1. Resolve variables in URL
@@ -161,7 +174,6 @@ export const executeHttpRequest = async (requestConfig, envVariables = [], store
     }
 
     // 6. Handle Request Timeout with AbortController
-    const controller = new AbortController();
     let timeoutId = null;
 
     if (settings.requestTimeoutMs > 0) {
@@ -244,8 +256,12 @@ export const executeHttpRequest = async (requestConfig, envVariables = [], store
     const endTime = performance.now();
     const durationMs = Math.round(endTime - startTime);
 
+    const isUserCancelled = externalSignal?.aborted || (err.name === 'AbortError' && settings.requestTimeoutMs === 0);
     let errorMessage = err.message || 'Network error or CORS policy restriction';
-    if (err.name === 'AbortError') {
+
+    if (isUserCancelled) {
+      errorMessage = 'Request cancelled by user';
+    } else if (err.name === 'AbortError') {
       errorMessage = `Request timed out after ${settings.requestTimeoutMs} ms.`;
     } else if (err.name === 'TypeError' && err.message.includes('fetch')) {
       errorMessage = 'Failed to fetch. This may be caused by a CORS restriction on the target server, invalid URL, or network disconnection.';
@@ -254,13 +270,14 @@ export const executeHttpRequest = async (requestConfig, envVariables = [], store
     return {
       success: false,
       status: 0,
-      statusText: err.name === 'AbortError' ? 'Request Timeout' : 'Network Error / CORS',
+      statusText: isUserCancelled ? 'Cancelled' : (err.name === 'AbortError' ? 'Request Timeout' : 'Network Error / CORS'),
       errorMessage,
       headers: [],
       cookies: [],
       data: null,
       rawText: errorMessage,
       isJson: false,
+      isCancelled: isUserCancelled,
       durationMs,
       sizeBytes: 0,
       url: requestConfig.url,

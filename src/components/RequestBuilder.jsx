@@ -9,7 +9,7 @@ import { InlineCurlImport } from './InlineCurlImport';
 import { InlineCodeSnippet } from './InlineCodeSnippet';
 import { CustomSelect } from './CustomSelect';
 import { parseCurlCommand } from '../utils/curlParser';
-import { Send, Save, Code, Sliders, FileCode, Shield, Terminal, Cookie, Settings, Code2 } from 'lucide-react';
+import { Send, Save, Code, Sliders, FileCode, Shield, Terminal, Cookie, Settings, Code2, XCircle } from 'lucide-react';
 
 const HTTP_METHOD_OPTIONS = [
   { value: 'GET', label: 'GET' },
@@ -25,6 +25,7 @@ export const RequestBuilder = ({
   request,
   onChange,
   onSend,
+  onCancel,
   onSave,
   activeEnv,
   activeEnvVars = [],
@@ -93,23 +94,48 @@ export const RequestBuilder = ({
             onPaste={handlePasteUrl}
             onKeyDown={(e) => {
               if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-                onSend();
+                if (isLoading && onCancel) {
+                  onCancel();
+                } else {
+                  onSend();
+                }
               }
             }}
             style={{ width: '100%', height: '36px', fontSize: '13px' }}
           />
         </div>
 
-        {/* Send Button */}
-        <button
-          className="aether-btn primary"
-          onClick={onSend}
-          disabled={isLoading}
-          style={{ height: '36px', padding: '0 18px' }}
-        >
-          <Send size={14} />
-          {isLoading ? 'Sending...' : 'Send'}
-        </button>
+        {/* Send / Cancel Button Toggle */}
+        {isLoading ? (
+          <button
+            type="button"
+            className="aether-btn"
+            onClick={onCancel}
+            title="Cancel Active Request"
+            style={{
+              height: '36px',
+              padding: '0 18px',
+              background: '#EF4444',
+              color: '#FFFFFF',
+              border: 'none',
+              fontWeight: '600',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            <XCircle size={14} /> Cancel
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="aether-btn primary"
+            onClick={onSend}
+            style={{ height: '36px', padding: '0 18px', display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            <Send size={14} /> Send
+          </button>
+        )}
 
         {/* Save Button */}
         <button
@@ -148,23 +174,23 @@ export const RequestBuilder = ({
             onClick={() => setActiveTab('auth')}
           >
             <Shield size={13} />
-            Auth {request.auth?.type !== 'none' && <span className="sub-tab-count">•</span>}
+            Auth
           </button>
 
           <button
             className={`sub-tab-btn ${activeTab === 'body' ? 'active' : ''}`}
             onClick={() => setActiveTab('body')}
           >
-            <Code size={13} />
-            Body {request.body?.mode !== 'none' && <span className="sub-tab-count">•</span>}
+            <Code2 size={13} />
+            Body
           </button>
 
           <button
             className={`sub-tab-btn ${activeTab === 'scripts' ? 'active' : ''}`}
             onClick={() => setActiveTab('scripts')}
           >
-            <Code2 size={13} />
-            Scripts {(request.preRequestScript || request.testScript) && <span className="sub-tab-count">•</span>}
+            <Terminal size={13} />
+            Scripts
           </button>
 
           <button
@@ -175,7 +201,6 @@ export const RequestBuilder = ({
             Settings
           </button>
 
-          {/* Cookies Button alongside sub-tabs as in Postman */}
           <button
             className="sub-tab-btn"
             onClick={() => setIsCookiesOpen(true)}
@@ -187,126 +212,106 @@ export const RequestBuilder = ({
           </button>
         </div>
 
-        {/* Section Toggles adjacent to sub-tabs */}
-        <div style={{ display: 'flex', gap: '4px', paddingRight: '12px' }}>
+        {/* Action Panel Buttons (Import cURL, Code Snippets) */}
+        <div style={{ display: 'flex', gap: '6px', paddingRight: '12px' }}>
           <button
-            className={`sub-tab-btn ${sidePanel === 'curl' ? 'active' : ''}`}
+            className={`aether-btn sm ${sidePanel === 'curl' ? 'primary' : ''}`}
             onClick={() => setSidePanel(sidePanel === 'curl' ? null : 'curl')}
-            title="Toggle Import cURL Section"
-            style={{ fontSize: '11px', padding: '6px 10px' }}
+            title="Import cURL command"
           >
-            <Terminal size={12} /> Import cURL
+            <Terminal size={12} /> cURL
           </button>
           <button
-            className={`sub-tab-btn ${sidePanel === 'code' ? 'active' : ''}`}
+            className={`aether-btn sm ${sidePanel === 'code' ? 'primary' : ''}`}
             onClick={() => setSidePanel(sidePanel === 'code' ? null : 'code')}
-            title="Toggle Code Snippets Section"
-            style={{ fontSize: '11px', padding: '6px 10px' }}
+            title="Generate Code Snippet"
           >
-            <Code size={12} /> Code Snippets
+            <Code size={12} /> Code
           </button>
         </div>
       </div>
 
-      {/* Main Content Area Split View */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        {/* Left Side: Params, Headers, Auth, Body, Scripts, Settings */}
-        <div style={{
-          flex: 1,
-          overflowY: 'auto',
-          borderRight: sidePanel ? '1px solid var(--border-color)' : 'none'
-        }}>
-          {activeTab === 'params' && (
+      {/* Main Sub-Tab Content View */}
+      <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+        {activeTab === 'params' && (
+          <div style={{ padding: '8px 12px', height: '100%', overflowY: 'auto' }}>
             <KeyValueEditor
               items={request.params || []}
-              onChange={(params) => onChange({ ...request, params, isDirty: true })}
-              keyPlaceholder="Query Parameter Key"
+              onChange={(items) => onChange({ ...request, params: items, isDirty: true })}
+              keyPlaceholder="Parameter Key"
               valuePlaceholder="Value"
             />
-          )}
+          </div>
+        )}
 
-          {activeTab === 'headers' && (
+        {activeTab === 'headers' && (
+          <div style={{ padding: '8px 12px', height: '100%', overflowY: 'auto' }}>
             <KeyValueEditor
               items={request.headers || []}
-              onChange={(headers) => onChange({ ...request, headers, isDirty: true })}
-              keyPlaceholder="Header Name (e.g. Content-Type)"
-              valuePlaceholder="Header Value"
+              onChange={(items) => onChange({ ...request, headers: items, isDirty: true })}
+              keyPlaceholder="Header Name"
+              valuePlaceholder="Value"
             />
-          )}
+          </div>
+        )}
 
-          {activeTab === 'auth' && (
+        {activeTab === 'auth' && (
+          <div style={{ height: '100%', overflowY: 'auto' }}>
             <AuthEditor
-              auth={request.auth}
+              auth={request.auth || { type: 'none' }}
               onChange={(auth) => onChange({ ...request, auth, isDirty: true })}
             />
-          )}
+          </div>
+        )}
 
-          {activeTab === 'body' && (
+        {activeTab === 'body' && (
+          <div style={{ height: '100%', overflowY: 'auto' }}>
             <BodyEditor
-              body={request.body}
+              body={request.body || { mode: 'none' }}
               onChange={(body) => onChange({ ...request, body, isDirty: true })}
             />
-          )}
+          </div>
+        )}
 
-          {activeTab === 'scripts' && (
+        {activeTab === 'scripts' && (
+          <div style={{ height: '100%', overflowY: 'auto' }}>
             <ScriptsEditor
-              preRequestScript={request.preRequestScript || ''}
-              testScript={request.testScript || ''}
-              onChangePreRequest={(script) => onChange({ ...request, preRequestScript: script, isDirty: true })}
-              onChangeTest={(script) => onChange({ ...request, testScript: script, isDirty: true })}
+              scripts={request.scripts || { preRequest: '', test: '' }}
+              onChange={(scripts) => onChange({ ...request, scripts, isDirty: true })}
             />
-          )}
+          </div>
+        )}
 
-          {activeTab === 'settings' && (
+        {activeTab === 'settings' && (
+          <div style={{ height: '100%', overflowY: 'auto' }}>
             <RequestSettingsEditor
               settings={request.settings}
               onChange={(settings) => onChange({ ...request, settings, isDirty: true })}
             />
-          )}
-        </div>
-
-        {/* Right Side: Inline cURL or Inline Code Snippet */}
-        {sidePanel && (
-          <div style={{
-            width: '380px',
-            maxWidth: '45%',
-            background: 'var(--bg-tab)',
-            padding: '12px 16px',
-            boxSizing: 'border-box',
-            overflowY: 'auto',
-            borderLeft: '1px solid var(--border-color)'
-          }}>
-            {sidePanel === 'curl' && (
-              <InlineCurlImport
-                onImport={(parsed) => {
-                  onChange({
-                    ...request,
-                    method: parsed.method || request.method,
-                    url: parsed.url || request.url,
-                    params: parsed.params?.length ? parsed.params : request.params,
-                    headers: parsed.headers?.length ? parsed.headers : request.headers,
-                    auth: parsed.auth?.type !== 'none' ? parsed.auth : request.auth,
-                    body: parsed.body?.mode !== 'none' ? parsed.body : request.body,
-                    isDirty: true,
-                  });
-                  setSidePanel(null);
-                }}
-                onClose={() => setSidePanel(null)}
-              />
-            )}
-
-            {sidePanel === 'code' && (
-              <InlineCodeSnippet
-                request={request}
-                envVariables={activeEnvVars}
-                onClose={() => setSidePanel(null)}
-              />
-            )}
           </div>
         )}
       </div>
 
-      {/* Cookies Management Modal */}
+      {/* Side Popover Drawers for cURL Import & Code Generation */}
+      {sidePanel === 'curl' && (
+        <InlineCurlImport
+          onImport={(importedReq) => {
+            onChange({ ...request, ...importedReq, isDirty: true });
+            setSidePanel(null);
+          }}
+          onClose={() => setSidePanel(null)}
+        />
+      )}
+
+      {sidePanel === 'code' && (
+        <InlineCodeSnippet
+          request={request}
+          activeEnvVars={activeEnvVars}
+          onClose={() => setSidePanel(null)}
+        />
+      )}
+
+      {/* Cookies Modal */}
       <CookiesModal
         isOpen={isCookiesOpen}
         onClose={() => setIsCookiesOpen(false)}

@@ -115,7 +115,7 @@ const DEFAULT_COLLECTIONS = [
 ];
 
 /**
- * Trims heavy response objects (rawText > 10KB) before saving to local storage
+ * Trims heavy response objects and guarantees loading states are NEVER persisted as true
  */
 const sanitizeDataForStorage = (key, data) => {
   if (key === STORAGE_KEYS.HISTORY && Array.isArray(data)) {
@@ -136,18 +136,19 @@ const sanitizeDataForStorage = (key, data) => {
   }
 
   if (key === STORAGE_KEYS.OPEN_TABS && Array.isArray(data)) {
-    // Sanitize open tabs response objects
+    // Sanitize open tabs: FORCE isLoading: false and trim heavy responses
     return data.map((tab) => {
-      if (tab.response?.rawText && tab.response.rawText.length > 20000) {
+      const sanitizedTab = { ...tab, isLoading: false, isExecuting: false };
+      if (sanitizedTab.response?.rawText && sanitizedTab.response.rawText.length > 20000) {
         return {
-          ...tab,
+          ...sanitizedTab,
           response: {
-            ...tab.response,
-            rawText: tab.response.rawText.slice(0, 20000) + '\n... [Response truncated for storage]',
+            ...sanitizedTab.response,
+            rawText: sanitizedTab.response.rawText.slice(0, 20000) + '\n... [Response truncated for storage]',
           },
         };
       }
-      return tab;
+      return sanitizedTab;
     });
   }
 
@@ -225,8 +226,12 @@ export const loadInitialState = () => {
           auth: { type: 'none' },
           body: { mode: 'none', json: '' },
           isDirty: false,
+          isLoading: false,
         },
       ];
+    } else {
+      // Forcefully reset all loaded tabs to isLoading: false to recover from any crash
+      openTabs = openTabs.map((t) => ({ ...t, isLoading: false, isExecuting: false }));
     }
 
     const activeTabId = localStorage.getItem(STORAGE_KEYS.ACTIVE_TAB_ID) || openTabs[0]?.id;

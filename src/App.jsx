@@ -1,97 +1,103 @@
-import React, { useState, useEffect } from 'react';
-import { Header } from './components/Header';
+import React, { useState, useEffect, useRef } from 'react';
 import { Sidebar } from './components/Sidebar';
+import { Header } from './components/Header';
 import { TabBar } from './components/TabBar';
 import { RequestBuilder } from './components/RequestBuilder';
 import { ResponseViewer } from './components/ResponseViewer';
-import { SplitResizer } from './components/SplitResizer';
-import { Footer } from './components/Footer';
 import { EnvironmentModal } from './components/EnvironmentModal';
-import { CodeSnippetModal } from './components/CodeSnippetModal';
 import { CollectionModal } from './components/CollectionModal';
-import { CurlImportModal } from './components/CurlImportModal';
 import { GoogleAuthModal } from './components/GoogleAuthModal';
-import { ConsoleDrawer } from './components/ConsoleDrawer';
+import { SplitResizer } from './components/SplitResizer';
+import { ErrorBoundary } from './components/ErrorBoundary';
+
 import { loadInitialState, saveStateItem, STORAGE_KEYS } from './utils/storage';
 import { executeHttpRequest } from './utils/requestExecutor';
-import { exportToPostmanFormat } from './utils/postmanFormat';
 import {
-  requestGoogleLogin,
   saveWorkspaceToGoogleDrive,
-  loadWorkspaceFromGoogleDrive,
-  GOOGLE_KEYS
+  GOOGLE_KEYS,
 } from './utils/googleDriveSync';
 
-export default function App() {
-  const [initialData] = useState(loadInitialState);
+const loadStoredCookies = () => {
+  try {
+    const saved = localStorage.getItem('restly_cookies');
+    return saved ? JSON.parse(saved) : [];
+  } catch (e) {
+    return [];
+  }
+};
 
-  const [collections, setCollections] = useState(initialData.collections);
-  const [environments, setEnvironments] = useState(initialData.environments);
-  const [activeEnvId, setActiveEnvId] = useState(initialData.activeEnvId);
-  const [history, setHistory] = useState(initialData.history);
+export function App() {
+  // Load initial persistent state
+  const initialState = loadInitialState();
 
-  const [tabs, setTabs] = useState(initialData.openTabs);
-  const [activeTabId, setActiveTabId] = useState(initialData.activeTabId);
-
-  // Console Logs State
+  const [collections, setCollections] = useState(initialState.collections);
+  const [environments, setEnvironments] = useState(initialState.environments);
+  const [activeEnvId, setActiveEnvId] = useState(initialState.activeEnvId);
+  const [history, setHistory] = useState(initialState.history);
+  const [tabs, setTabs] = useState(initialState.openTabs);
+  const [activeTabId, setActiveTabId] = useState(initialState.activeTabId);
   const [consoleLogs, setConsoleLogs] = useState([]);
-  const [isConsoleOpen, setIsConsoleOpen] = useState(false);
 
-  // Theme State ('dark' | 'light')
-  const [theme, setTheme] = useState(() => {
-    return localStorage.getItem('restly_theme') || 'dark';
-  });
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('restly_theme', theme);
-  }, [theme]);
-
-  const handleToggleTheme = () => {
-    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
-  };
-
-  // Zoom Level State (default 100%)
-  const [zoomLevel, setZoomLevel] = useState(() => {
-    const saved = localStorage.getItem('restly_zoom');
-    return saved ? parseInt(saved, 10) : 100;
-  });
-
-  useEffect(() => {
-    document.documentElement.style.zoom = `${zoomLevel}%`;
-    localStorage.setItem('restly_zoom', zoomLevel.toString());
-  }, [zoomLevel]);
-
-  // Pane Resizing State
-  const [requestPaneHeightPct, setRequestPaneHeightPct] = useState(48);
-
-  // Modals state
+  // UI Modals
   const [showEnvModal, setShowEnvModal] = useState(false);
-  const [showCodeModal, setShowCodeModal] = useState(false);
-  const [showCurlModal, setShowCurlModal] = useState(false);
   const [collectionModalMode, setCollectionModalMode] = useState(null); // 'create' | 'import' | null
   const [showGoogleModal, setShowGoogleModal] = useState(false);
 
-  // Google Auth & Drive Sync State
+  // Google Sync State
   const [googleUser, setGoogleUser] = useState(() => {
-    try {
-      const saved = localStorage.getItem(GOOGLE_KEYS.USER_PROFILE);
-      return saved ? JSON.parse(saved) : null;
-    } catch (e) {
-      return null;
-    }
+    const saved = localStorage.getItem(GOOGLE_KEYS.USER_PROFILE);
+    return saved ? JSON.parse(saved) : null;
   });
-
   const [googleToken, setGoogleToken] = useState(() => {
     return localStorage.getItem(GOOGLE_KEYS.ACCESS_TOKEN) || null;
   });
-
   const [syncStatus, setSyncStatus] = useState('idle'); // 'idle' | 'syncing' | 'synced' | 'error'
   const [lastSyncTime, setLastSyncTime] = useState(() => {
     return localStorage.getItem(GOOGLE_KEYS.LAST_SYNC) || null;
   });
 
-  // Active Environment Variables
+  // Resizable Splitter
+  const [requestPaneHeightPct, setRequestPaneHeightPct] = useState(48);
+
+  // Theme
+  const [theme, setTheme] = useState(() => localStorage.getItem('aether_theme') || 'dark');
+
+  // Active AbortControllers Map for Cancel Request functionality
+  const activeAbortControllers = useRef(new Map());
+
+  // Apply Theme
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('aether_theme', theme);
+  }, [theme]);
+
+  // Global Error & Rejection Recovery Listener to prevent stuck loading states
+  useEffect(() => {
+    const handleGlobalError = (event) => {
+      console.error('Global Application Error Caught:', event);
+      // Reset all tabs loading state to recover UI
+      setTabs((prevTabs) => prevTabs.map((t) => ({ ...t, isLoading: false, isExecuting: false })));
+    };
+
+    const handleUnhandledRejection = (event) => {
+      console.warn('Global Unhandled Promise Rejection Caught:', event.reason);
+      setTabs((prevTabs) => prevTabs.map((t) => ({ ...t, isLoading: false, isExecuting: false })));
+    };
+
+    window.addEventListener('error', handleGlobalError);
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+
+    return () => {
+      window.removeEventListener('error', handleGlobalError);
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+    };
+  }, []);
+
+  const handleToggleTheme = () => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  };
+
+  // Active Environment
   const activeEnv = environments.find((e) => e.id === activeEnvId);
   const activeEnvVars = activeEnv?.variables || [];
 
@@ -128,74 +134,63 @@ export default function App() {
   // Google OAuth Login
   const handleGoogleLogin = (clientId, callback) => {
     try {
-      requestGoogleLogin(clientId, async (res) => {
-        if (res.error) {
-          callback({ error: res.error });
-          setSyncStatus('error');
-          return;
-        }
+      if (!window.google?.accounts?.id) {
+        if (callback) callback({ error: 'Google Identity SDK loading or blocked.' });
+        return;
+      }
 
-        setGoogleUser(res.user);
-        setGoogleToken(res.accessToken);
-        localStorage.setItem(GOOGLE_KEYS.USER_PROFILE, JSON.stringify(res.user));
-        localStorage.setItem(GOOGLE_KEYS.ACCESS_TOKEN, res.accessToken);
+      window.google.accounts.id.initialize({
+        client_id: clientId,
+        callback: (response) => {
+          if (response.credential) {
+            try {
+              const base64Url = response.credential.split('.')[1];
+              const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+              const jsonPayload = decodeURIComponent(
+                atob(base64)
+                  .split('')
+                  .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+                  .join('')
+              );
+              const profile = JSON.parse(jsonPayload);
+              const userObj = {
+                name: profile.name,
+                email: profile.email,
+                picture: profile.picture,
+              };
 
-        // Attempt cloud restore or initial backup
-        try {
-          setSyncStatus('syncing');
-          const cloudData = await loadWorkspaceFromGoogleDrive(res.accessToken);
-          if (cloudData) {
-            if (cloudData.collections?.length) setCollections(cloudData.collections);
-            if (cloudData.environments?.length) setEnvironments(cloudData.environments);
-            if (cloudData.history?.length) setHistory(cloudData.history);
-            if (cloudData.tabs?.length) setTabs(cloudData.tabs);
-            if (cloudData.activeEnvId) setActiveEnvId(cloudData.activeEnvId);
-            if (cloudData.activeTabId) setActiveTabId(cloudData.activeTabId);
-          } else {
-            const payload = {
-              collections,
-              environments,
-              history,
-              tabs,
-              activeEnvId,
-              activeTabId,
-              updatedAt: new Date().toISOString(),
-            };
-            await saveWorkspaceToGoogleDrive(res.accessToken, payload);
+              setGoogleUser(userObj);
+              setGoogleToken(response.credential);
+              localStorage.setItem(GOOGLE_KEYS.USER_PROFILE, JSON.stringify(userObj));
+              localStorage.setItem(GOOGLE_KEYS.ACCESS_TOKEN, response.credential);
+
+              if (callback) callback(userObj);
+            } catch (e) {
+              console.error('Failed to parse Google ID token', e);
+              if (callback) callback({ error: 'Failed to parse Google account profile.' });
+            }
           }
-
-          const now = new Date().toISOString();
-          setLastSyncTime(now);
-          localStorage.setItem(GOOGLE_KEYS.LAST_SYNC, now);
-          setSyncStatus('synced');
-          callback({ success: true });
-        } catch (syncErr) {
-          console.error('Google Drive sync error:', syncErr);
-          setSyncStatus('error');
-          callback({ success: true });
-        }
+        },
       });
+
+      window.google.accounts.id.prompt();
     } catch (err) {
-      callback({ error: err.message });
+      console.error('Google login error:', err);
+      if (callback) callback({ error: err.message });
     }
   };
 
-  // Manual Trigger Google Drive Sync
+  // Google Drive Manual Sync Now
   const handleGoogleSyncNow = async () => {
-    if (!googleToken) {
-      setShowGoogleModal(true);
-      return;
-    }
+    if (!googleToken) return;
+    setSyncStatus('syncing');
 
     try {
-      setSyncStatus('syncing');
       const payload = {
         collections,
         environments,
-        history,
-        tabs,
         activeEnvId,
-        activeTabId,
+        history,
         updatedAt: new Date().toISOString(),
       };
       await saveWorkspaceToGoogleDrive(googleToken, payload);
@@ -234,6 +229,7 @@ export default function App() {
       auth: { type: 'none' },
       body: { mode: 'none', json: '' },
       isDirty: false,
+      isLoading: false,
     };
     setTabs([...tabs, newTab]);
     setActiveTabId(newTab.id);
@@ -241,6 +237,11 @@ export default function App() {
 
   const handleCloseTab = (tabId) => {
     if (tabs.length === 1) return;
+    // Abort active request if tab is closed while sending
+    if (activeAbortControllers.current.has(tabId)) {
+      activeAbortControllers.current.get(tabId).abort();
+      activeAbortControllers.current.delete(tabId);
+    }
     const filtered = tabs.filter((t) => t.id !== tabId);
     setTabs(filtered);
     if (activeTabId === tabId) {
@@ -274,50 +275,105 @@ export default function App() {
         name: 'Imported cURL',
         ...parsedRequest,
         isDirty: true,
+        isLoading: false,
       };
       setTabs([...tabs, newTab]);
       setActiveTabId(newTab.id);
     }
   };
 
+  // Cancel Active HTTP Request
+  const handleCancelRequest = (tabId) => {
+    const targetTabId = tabId || activeTab?.id;
+    if (!targetTabId) return;
+
+    if (activeAbortControllers.current.has(targetTabId)) {
+      activeAbortControllers.current.get(targetTabId).abort();
+      activeAbortControllers.current.delete(targetTabId);
+    }
+
+    setTabs((prevTabs) =>
+      prevTabs.map((t) =>
+        t.id === targetTabId
+          ? {
+              ...t,
+              isLoading: false,
+              response: {
+                success: false,
+                status: 0,
+                statusText: 'Cancelled',
+                errorMessage: 'Request cancelled by user',
+                isCancelled: true,
+                rawText: 'Request cancelled by user',
+              },
+            }
+          : t
+      )
+    );
+  };
+
   // Request Execution
   const handleSendRequest = async () => {
     if (!activeTab) return;
+    const targetTabId = activeTab.id;
+
+    // Create and register AbortController
+    const controller = new AbortController();
+    activeAbortControllers.current.set(targetTabId, controller);
 
     // Set loading
     handleUpdateActiveTab({ isLoading: true });
 
-    const result = await executeHttpRequest(activeTab, activeEnvVars);
+    try {
+      const storedCookies = loadStoredCookies();
+      const result = await executeHttpRequest(activeTab, activeEnvVars, storedCookies, controller.signal);
 
-    // Update tab with response
-    handleUpdateActiveTab({ response: result, isLoading: false });
+      // Update tab with response
+      handleUpdateActiveTab({ response: result, isLoading: false });
 
-    // Append to history
-    const historyItem = {
-      id: `hist-${Date.now()}`,
-      method: activeTab.method || 'GET',
-      url: result.url || activeTab.url,
-      status: result.status,
-      statusText: result.statusText,
-      durationMs: result.durationMs,
-      timestamp: new Date().toISOString(),
-      tabConfig: { ...activeTab },
-    };
-    setHistory([historyItem, ...history.slice(0, 49)]); // Keep last 50
+      // Append to history if not cancelled
+      if (!result.isCancelled) {
+        const historyItem = {
+          id: `hist-${Date.now()}`,
+          method: activeTab.method || 'GET',
+          url: result.url || activeTab.url,
+          status: result.status,
+          statusText: result.statusText,
+          durationMs: result.durationMs,
+          timestamp: new Date().toISOString(),
+          tabConfig: { ...activeTab },
+        };
+        setHistory((prev) => [historyItem, ...prev.slice(0, 49)]);
+      }
 
-    // Log to Postman Console
-    const consoleLog = {
-      id: `log-${Date.now()}`,
-      method: activeTab.method || 'GET',
-      url: result.url || activeTab.url,
-      status: result.status,
-      statusText: result.statusText,
-      durationMs: result.durationMs,
-      requestHeaders: result.requestHeaders,
-      rawText: result.rawText,
-      timestamp: new Date().toISOString(),
-    };
-    setConsoleLogs((prev) => [consoleLog, ...prev.slice(0, 99)]);
+      // Log to Postman Console
+      const consoleLog = {
+        id: `log-${Date.now()}`,
+        method: activeTab.method || 'GET',
+        url: result.url || activeTab.url,
+        status: result.status,
+        statusText: result.statusText,
+        durationMs: result.durationMs,
+        requestHeaders: result.requestHeaders,
+        rawText: result.rawText,
+        timestamp: new Date().toISOString(),
+      };
+      setConsoleLogs((prev) => [consoleLog, ...prev.slice(0, 99)]);
+    } catch (err) {
+      console.error('Unexpected Exception inside handleSendRequest:', err);
+      handleUpdateActiveTab({
+        isLoading: false,
+        response: {
+          success: false,
+          status: 0,
+          statusText: 'Execution Error',
+          errorMessage: err.message || 'An unexpected error occurred during request execution',
+          rawText: err.stack || err.message,
+        },
+      });
+    } finally {
+      activeAbortControllers.current.delete(targetTabId);
+    }
   };
 
   // Save Request to Collection
@@ -348,119 +404,69 @@ export default function App() {
         );
         handleUpdateActiveTab({ collectionId: targetCol.id, isDirty: false });
       } else {
-        setCollectionModalMode('create');
+        const newCol = {
+          id: `col-${Date.now()}`,
+          name: 'My Collection',
+          items: [{ ...activeTab, collectionId: `col-${Date.now()}`, isDirty: false }],
+        };
+        setCollections([...collections, newCol]);
+        handleUpdateActiveTab({ collectionId: newCol.id, isDirty: false });
       }
     }
   };
 
-  // Global Keyboard Shortcuts (Zoom, New Tab, Close Tab, Send, Save, Focus, Import)
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      const isCmdOrCtrl = e.metaKey || e.ctrlKey;
-      if (!isCmdOrCtrl) return;
-
-      // 1. Zoom In: Cmd + + / Cmd + = / Cmd + NumpadAdd
-      if (e.key === '=' || e.key === '+' || e.code === 'NumpadAdd') {
-        e.preventDefault();
-        setZoomLevel((prev) => Math.min(prev + 10, 180));
-        return;
-      }
-
-      // 2. Zoom Out: Cmd + - / Cmd + NumpadSubtract
-      if (e.key === '-' || e.code === 'NumpadSubtract') {
-        e.preventDefault();
-        setZoomLevel((prev) => Math.max(prev - 10, 70));
-        return;
-      }
-
-      // 3. Zoom Reset: Cmd + 0 / Cmd + Numpad0
-      if (e.key === '0' || e.code === 'Numpad0') {
-        e.preventDefault();
-        setZoomLevel(100);
-        return;
-      }
-
-      // 4. New Request Tab: Cmd + N
-      if (e.key.toLowerCase() === 'n') {
-        e.preventDefault();
-        handleAddTab();
-        return;
-      }
-
-      // 5. Close Current Tab: Cmd + W
-      if (e.key.toLowerCase() === 'w') {
-        e.preventDefault();
-        if (activeTabId) {
-          handleCloseTab(activeTabId);
-        }
-        return;
-      }
-
-      // 6. Save Request: Cmd + S
-      if (e.key.toLowerCase() === 's') {
-        e.preventDefault();
-        handleSaveRequest();
-        return;
-      }
-
-      // 7. Send Request: Cmd + Enter
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        handleSendRequest();
-        return;
-      }
-
-      // 8. Focus URL Input: Cmd + K or Cmd + L
-      if (e.key.toLowerCase() === 'k' || e.key.toLowerCase() === 'l') {
-        e.preventDefault();
-        const urlInput = document.getElementById('url-input-bar');
-        if (urlInput) {
-          urlInput.focus();
-          urlInput.select();
-        }
-        return;
-      }
-
-      // 9. Import cURL Modal: Cmd + Shift + I
-      if (e.shiftKey && e.key.toLowerCase() === 'i') {
-        e.preventDefault();
-        setShowCurlModal(true);
-        return;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeTabId, activeTab, tabs, collections]);
-
-  // Sidebar Request Selection
-  const handleSelectSidebarRequest = (req, collectionId) => {
+  // Sidebar Request Select
+  const handleSelectSidebarRequest = (req) => {
     const existingTab = tabs.find((t) => t.id === req.id);
     if (existingTab) {
       setActiveTabId(existingTab.id);
     } else {
-      const newTab = { ...req, collectionId, isDirty: false };
+      const newTab = { ...req, isDirty: false, isLoading: false };
       setTabs([...tabs, newTab]);
       setActiveTabId(newTab.id);
     }
   };
 
-  // Sidebar Collection Handlers
-  const handleCreateCollection = (newCol) => {
+  // Sidebar History Item Select
+  const handleSelectHistoryItem = (hist) => {
+    if (hist.tabConfig) {
+      const newTab = {
+        ...hist.tabConfig,
+        id: `tab-${Date.now()}`,
+        name: `History: ${hist.method} ${hist.url}`,
+        isDirty: false,
+        isLoading: false,
+      };
+      setTabs([...tabs, newTab]);
+      setActiveTabId(newTab.id);
+    }
+  };
+
+  // Collection CRUD
+  const handleCreateCollection = (name, description) => {
+    const newCol = {
+      id: `col-${Date.now()}`,
+      name,
+      description,
+      items: [],
+    };
     setCollections([...collections, newCol]);
+    setCollectionModalMode(null);
   };
 
   const handleCreateRequestInCollection = (collectionId) => {
     const newReq = {
       id: `req-${Date.now()}`,
+      collectionId,
       name: 'New Request',
       method: 'GET',
-      url: '{{baseUrl}}/posts',
+      url: '{{baseUrl}}/posts/1',
       params: [],
       headers: [{ key: 'Accept', value: 'application/json', enabled: true }],
       auth: { type: 'none' },
-      body: { mode: 'none' },
-      collectionId,
+      body: { mode: 'none', json: '' },
+      isDirty: false,
+      isLoading: false,
     };
 
     setCollections(
@@ -477,7 +483,7 @@ export default function App() {
     setCollections(collections.filter((c) => c.id !== colId));
   };
 
-  const handleDeleteRequest = (reqId, colId) => {
+  const handleDeleteRequest = (colId, reqId) => {
     setCollections(
       collections.map((col) =>
         col.id === colId ? { ...col, items: col.items.filter((i) => i.id !== reqId) } : col
@@ -485,181 +491,155 @@ export default function App() {
     );
   };
 
-  // History Handler
-  const handleSelectHistoryItem = (histItem) => {
-    const newTab = {
-      ...histItem.tabConfig,
-      id: `tab-${Date.now()}`,
-      name: `Re: ${histItem.method} ${histItem.url}`,
-      isDirty: false,
-    };
-    setTabs([...tabs, newTab]);
-    setActiveTabId(newTab.id);
+  // Environment CRUD
+  const handleSaveEnvironments = (updatedEnvs) => {
+    setEnvironments(updatedEnvs);
   };
 
-  // Import / Export Postman Collections
-  const handleImportCollection = (importedCollection) => {
-    setCollections([...collections, importedCollection]);
-  };
-
-  const handleExportCollection = () => {
-    if (!collections.length) return;
-    const targetCol = collections[0];
-    const postmanJson = exportToPostmanFormat(targetCol);
-    const text = JSON.stringify(postmanJson, null, 2);
-    const blob = new Blob([text], { type: 'application/json' });
+  // Export Collection JSON
+  const handleExportCollection = (colId) => {
+    const target = collections.find((c) => c.id === colId) || collections[0];
+    if (!target) return;
+    const blob = new Blob([JSON.stringify(target, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${targetCol.name.replace(/\s+/g, '_')}.postman_collection.json`;
-    link.click();
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${target.name.toLowerCase().replace(/\s+/g, '-')}-collection.json`;
+    a.click();
     URL.revokeObjectURL(url);
   };
 
   return (
-    <div className="app-container">
-      {/* Top Header */}
-      <Header
-        environments={environments}
-        activeEnvId={activeEnvId}
-        onSelectEnv={(id) => setActiveEnvId(id)}
-        onOpenEnvModal={() => setShowEnvModal(true)}
-        onImportCollection={() => setCollectionModalMode('import')}
-        onExportCollection={handleExportCollection}
-        onNewRequest={handleAddTab}
-        theme={theme}
-        onToggleTheme={handleToggleTheme}
-        googleUser={googleUser}
-        syncStatus={syncStatus}
-        lastSyncTime={lastSyncTime}
-        onTriggerSync={handleGoogleSyncNow}
-        onOpenGoogleModal={() => setShowGoogleModal(true)}
-        onGoogleLogout={handleGoogleLogout}
-      />
-
-      {/* Main Workspace */}
-      <div className="main-workspace">
-        {/* Left Sidebar */}
-        <Sidebar
-          collections={collections}
-          history={history}
-          activeRequestId={activeTab?.id}
-          onSelectRequest={handleSelectSidebarRequest}
-          onCreateCollection={() => setCollectionModalMode('create')}
-          onCreateRequestInCollection={handleCreateRequestInCollection}
-          onDeleteCollection={handleDeleteCollection}
-          onDeleteRequest={handleDeleteRequest}
-          onSelectHistoryItem={handleSelectHistoryItem}
-          onClearHistory={() => setHistory([])}
-        />
-
-        {/* Central Content Area */}
-        <main className="content-area">
-          {/* Top Multi-Tab Bar */}
-          <TabBar
-            tabs={tabs}
-            activeTabId={activeTabId}
-            onSelectTab={handleSelectTab}
-            onCloseTab={handleCloseTab}
-            onAddTab={handleAddTab}
-          />
-
-          {/* Request & Response Split Pane with Resizer */}
-          {activeTab ? (
-            <div className="editor-response-split">
-              <RequestBuilder
-                request={activeTab}
-                onChange={handleUpdateActiveTab}
-                onSend={handleSendRequest}
-                onSave={handleSaveRequest}
-                activeEnv={activeEnv}
-                activeEnvVars={activeEnvVars}
-                isLoading={activeTab.isLoading}
-                heightPct={requestPaneHeightPct}
-              />
-
-              {/* Draggable Vertical Splitter */}
-              <SplitResizer
-                requestHeight={requestPaneHeightPct}
-                onResize={(newPct) => setRequestPaneHeightPct(newPct)}
-              />
-
-              <ResponseViewer
-                response={activeTab.response}
-                isLoading={activeTab.isLoading}
-              />
-            </div>
-          ) : (
-            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
-              No open request tabs. Click + to create a new request.
-            </div>
-          )}
-        </main>
-      </div>
-
-      {/* Bottom Status Bar / Footer */}
-      <Footer
-        activeEnv={activeEnv}
-        collectionsCount={collections.length}
-        historyCount={history.length}
-        lastResponse={activeTab?.response}
-        consoleLogsCount={consoleLogs.length}
-        isConsoleOpen={isConsoleOpen}
-        onToggleConsole={() => setIsConsoleOpen(!isConsoleOpen)}
-      />
-
-      {/* Postman Console Drawer */}
-      <ConsoleDrawer
-        isOpen={isConsoleOpen}
-        onClose={() => setIsConsoleOpen(false)}
-        logs={consoleLogs}
-        onClearLogs={() => setConsoleLogs([])}
-      />
-
-      {/* Modals */}
-      {showEnvModal && (
-        <EnvironmentModal
+    <ErrorBoundary>
+      <div className="app-container">
+        {/* Top Header */}
+        <Header
           environments={environments}
           activeEnvId={activeEnvId}
-          onSaveEnvironments={(updatedEnvs, selectedId) => {
-            setEnvironments(updatedEnvs);
-            setActiveEnvId(selectedId);
-          }}
+          onSelectEnv={(id) => setActiveEnvId(id)}
+          onOpenEnvModal={() => setShowEnvModal(true)}
+          onImportCollection={() => setCollectionModalMode('import')}
+          onExportCollection={handleExportCollection}
+          onNewRequest={handleAddTab}
+          theme={theme}
+          onToggleTheme={handleToggleTheme}
+          googleUser={googleUser}
+          syncStatus={syncStatus}
+          lastSyncTime={lastSyncTime}
+          onTriggerSync={handleGoogleSyncNow}
+          onOpenGoogleModal={() => setShowGoogleModal(true)}
+          onGoogleLogout={handleGoogleLogout}
+        />
+
+        {/* Main Workspace */}
+        <div className="main-workspace">
+          {/* Left Sidebar */}
+          <Sidebar
+            collections={collections}
+            history={history}
+            activeRequestId={activeTab?.id}
+            onSelectRequest={handleSelectSidebarRequest}
+            onCreateCollection={() => setCollectionModalMode('create')}
+            onCreateRequestInCollection={handleCreateRequestInCollection}
+            onDeleteCollection={handleDeleteCollection}
+            onDeleteRequest={handleDeleteRequest}
+            onSelectHistoryItem={handleSelectHistoryItem}
+            onClearHistory={() => setHistory([])}
+          />
+
+          {/* Central Content Area */}
+          <main className="content-area">
+            {/* Top Multi-Tab Bar */}
+            <TabBar
+              tabs={tabs}
+              activeTabId={activeTabId}
+              onSelectTab={handleSelectTab}
+              onCloseTab={handleCloseTab}
+              onAddTab={handleAddTab}
+            />
+
+            {/* Request & Response Split Pane with Resizer */}
+            {activeTab ? (
+              <div className="editor-response-split">
+                <RequestBuilder
+                  request={activeTab}
+                  onChange={handleUpdateActiveTab}
+                  onSend={handleSendRequest}
+                  onCancel={() => handleCancelRequest(activeTab.id)}
+                  onSave={handleSaveRequest}
+                  activeEnv={activeEnv}
+                  activeEnvVars={activeEnvVars}
+                  isLoading={activeTab.isLoading}
+                  heightPct={requestPaneHeightPct}
+                />
+
+                {/* Draggable Vertical Splitter */}
+                <SplitResizer
+                  requestHeight={requestPaneHeightPct}
+                  onResize={(newPct) => setRequestPaneHeightPct(newPct)}
+                />
+
+                <ResponseViewer
+                  response={activeTab.response}
+                  isLoading={activeTab.isLoading}
+                />
+              </div>
+            ) : (
+              <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                No open request tabs. Click + to create a new request.
+              </div>
+            )}
+          </main>
+        </div>
+
+        {/* Bottom Status Bar / Footer */}
+        <footer className="app-footer">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span>RESTLY Studio • Active Env: <strong>{activeEnv?.name || 'No Environment'}</strong></span>
+            <span>|</span>
+            <span>Tabs Open: {tabs.length}</span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            {googleUser && (
+              <span style={{ color: 'var(--text-muted)' }}>
+                Sync: {syncStatus === 'synced' ? '✓ Google Drive Synced' : syncStatus === 'syncing' ? 'Syncing...' : 'Idle'}
+              </span>
+            )}
+            <span>Online Mode</span>
+          </div>
+        </footer>
+
+        {/* Modals */}
+        <EnvironmentModal
+          isOpen={showEnvModal}
           onClose={() => setShowEnvModal(false)}
+          environments={environments}
+          onSave={handleSaveEnvironments}
         />
-      )}
 
-      {showCodeModal && activeTab && (
-        <CodeSnippetModal
-          request={activeTab}
-          envVariables={activeEnvVars}
-          onClose={() => setShowCodeModal(false)}
-        />
-      )}
+        {collectionModalMode && (
+          <CollectionModal
+            mode={collectionModalMode}
+            onClose={() => setCollectionModalMode(null)}
+            onCreateCollection={handleCreateCollection}
+            onImportCollection={(importedCol) => {
+              setCollections([...collections, importedCol]);
+              setCollectionModalMode(null);
+            }}
+          />
+        )}
 
-      {showCurlModal && (
-        <CurlImportModal
-          onImportCurl={handleImportCurl}
-          onClose={() => setShowCurlModal(false)}
-        />
-      )}
-
-      {collectionModalMode && (
-        <CollectionModal
-          mode={collectionModalMode}
-          onCreateCollection={handleCreateCollection}
-          onImportCollection={handleImportCollection}
-          onClose={() => setCollectionModalMode(null)}
-        />
-      )}
-
-      {showGoogleModal && (
-        <GoogleAuthModal
-          user={googleUser}
-          onLoginSuccess={handleGoogleLogin}
-          onClose={() => setShowGoogleModal(false)}
-        />
-      )}
-    </div>
+        {showGoogleModal && (
+          <GoogleAuthModal
+            user={googleUser}
+            onClose={() => setShowGoogleModal(false)}
+            onLoginSuccess={handleGoogleLogin}
+          />
+        )}
+      </div>
+    </ErrorBoundary>
   );
 }
+
+export default App;

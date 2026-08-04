@@ -3,31 +3,36 @@ import { KeyValueEditor } from './KeyValueEditor';
 import { X, Plus, Trash2, Globe, Check } from 'lucide-react';
 
 export const EnvironmentModal = ({
+  isOpen = true,
   environments = [],
   activeEnvId,
+  onSave,
   onSaveEnvironments,
   onClose,
 }) => {
-  const [envList, setEnvList] = useState(JSON.parse(JSON.stringify(environments)));
-  const [selectedEnvId, setSelectedEnvId] = useState(activeEnvId || envList[0]?.id);
+  const [envList, setEnvList] = useState(() => JSON.parse(JSON.stringify(environments)));
+  const [selectedEnvId, setSelectedEnvId] = useState(activeEnvId || environments[0]?.id);
+
+  if (!isOpen) return null;
 
   const selectedEnv = envList.find((e) => e.id === selectedEnvId) || envList[0];
 
-  const handleAddEnvironment = () => {
+  const handleAddEnv = () => {
     const newEnv = {
       id: `env-${Date.now()}`,
       name: 'New Environment',
-      variables: [{ key: 'baseUrl', value: 'https://api.example.com', enabled: true }],
+      variables: [{ key: '', value: '', enabled: true }],
     };
     setEnvList([...envList, newEnv]);
     setSelectedEnvId(newEnv.id);
   };
 
-  const handleDeleteEnvironment = (id) => {
-    const updated = envList.filter((e) => e.id !== id);
-    setEnvList(updated);
+  const handleDeleteEnv = (id) => {
+    if (envList.length === 1) return;
+    const filtered = envList.filter((e) => e.id !== id);
+    setEnvList(filtered);
     if (selectedEnvId === id) {
-      setSelectedEnvId(updated[0]?.id || null);
+      setSelectedEnvId(filtered[0]?.id);
     }
   };
 
@@ -44,7 +49,10 @@ export const EnvironmentModal = ({
   };
 
   const handleSave = () => {
-    onSaveEnvironments(envList, selectedEnvId);
+    const saveFn = onSaveEnvironments || onSave;
+    if (saveFn) {
+      saveFn(envList, selectedEnvId);
+    }
     onClose();
   };
 
@@ -61,96 +69,94 @@ export const EnvironmentModal = ({
           </button>
         </div>
 
-        <div className="modal-body" style={{ display: 'flex', gap: '20px', padding: 0 }}>
-          {/* Environment List Pane */}
-          <div style={{ width: '220px', borderRight: '1px solid var(--border-color)', padding: '16px', background: 'var(--bg-tab)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+        <div className="modal-body" style={{ display: 'flex', gap: '16px', minHeight: '320px', padding: '16px 20px' }}>
+          {/* Environment Sidebar List */}
+          <div style={{ width: '200px', borderRight: '1px solid var(--border-color)', paddingRight: '12px', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
               <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)' }}>ENVIRONMENTS</span>
-              <button className="aether-btn sm" onClick={handleAddEnvironment}>
-                <Plus size={12} /> Add
+              <button className="aether-btn sm" onClick={handleAddEnv} title="Add Environment">
+                <Plus size={12} />
               </button>
             </div>
 
-            {envList.map((env) => (
-              <div
-                key={env.id}
-                onClick={() => setSelectedEnvId(env.id)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '8px 12px',
-                  borderRadius: '6px',
-                  marginBottom: '4px',
-                  cursor: 'pointer',
-                  background: env.id === selectedEnvId ? 'var(--bg-card)' : 'transparent',
-                  color: env.id === selectedEnvId ? 'var(--accent-primary)' : 'var(--text-main)',
-                  fontWeight: env.id === selectedEnvId ? '600' : '400',
-                  fontSize: '12px',
-                  border: env.id === selectedEnvId ? '1px solid var(--border-color)' : '1px solid transparent',
-                }}
-              >
-                <span>{env.name}</span>
-                {envList.length > 1 && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteEnvironment(env.id);
-                    }}
-                    style={{ background: 'none', border: 'none', color: '#DC2626', opacity: 0.7, cursor: 'pointer' }}
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                )}
-              </div>
-            ))}
+            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              {envList.map((env) => (
+                <div
+                  key={env.id}
+                  onClick={() => setSelectedEnvId(env.id)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '8px 10px',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    fontWeight: env.id === selectedEnvId ? '600' : 'normal',
+                    background: env.id === selectedEnvId ? 'var(--accent-glow)' : 'transparent',
+                    color: env.id === selectedEnvId ? 'var(--accent-primary)' : 'var(--text-main)',
+                  }}
+                >
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{env.name}</span>
+                  {envList.length > 1 && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteEnv(env.id);
+                      }}
+                      style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 0 }}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
 
-          {/* Environment Variables Editor */}
-          <div style={{ flex: 1, padding: '16px', overflowY: 'auto' }}>
-            {selectedEnv ? (
+          {/* Variables Table for Selected Environment */}
+          {selectedEnv ? (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div>
-                <div style={{ marginBottom: '16px' }}>
-                  <label style={{ display: 'block', color: 'var(--text-muted)', fontSize: '11px', marginBottom: '4px' }}>
-                    ENVIRONMENT NAME
-                  </label>
-                  <input
-                    type="text"
-                    className="aether-input"
-                    value={selectedEnv.name || ''}
-                    onChange={(e) => handleNameChange(e.target.value)}
-                    style={{ width: '100%', fontWeight: '600', fontSize: '14px' }}
-                  />
-                </div>
-
-                <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                  ENVIRONMENT VARIABLES
-                </div>
-                <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginBottom: '12px' }}>
-                  Use these in your requests via <code style={{ color: 'var(--accent-primary)' }}>&#123;&#123;variableName&#125;&#125;</code> notation.
-                </div>
-
-                <KeyValueEditor
-                  items={selectedEnv.variables || []}
-                  onChange={handleVariablesChange}
-                  keyPlaceholder="Variable Name"
-                  valuePlaceholder="Value"
+                <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                  ENVIRONMENT NAME
+                </label>
+                <input
+                  type="text"
+                  className="aether-input"
+                  value={selectedEnv.name || ''}
+                  onChange={(e) => handleNameChange(e.target.value)}
+                  style={{ width: '100%', fontSize: '13px' }}
                 />
               </div>
-            ) : (
-              <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)' }}>
-                Select or create an environment to manage variables.
+
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
+                  VARIABLES (Access via {'{{variableName}}'})
+                </label>
+                <div style={{ flex: 1, overflowY: 'auto' }}>
+                  <KeyValueEditor
+                    items={selectedEnv.variables || []}
+                    onChange={handleVariablesChange}
+                    keyPlaceholder="Variable Name"
+                    valuePlaceholder="Initial / Current Value"
+                  />
+                </div>
               </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+              Select or create an environment
+            </div>
+          )}
         </div>
 
-        <div className="modal-footer">
+        <div className="modal-footer" style={{ padding: '12px 20px', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
           <button className="aether-btn" onClick={onClose}>
             Cancel
           </button>
           <button className="aether-btn primary" onClick={handleSave}>
-            <Check size={14} /> Save Changes
+            <Check size={14} /> Save Environments
           </button>
         </div>
       </div>
