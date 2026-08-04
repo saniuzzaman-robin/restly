@@ -43,7 +43,7 @@ export function App() {
   const [collectionModalMode, setCollectionModalMode] = useState(null); // 'create' | 'import' | null
   const [showGoogleModal, setShowGoogleModal] = useState(false);
 
-  // Application Zoom Level
+  // Application Zoom Level (70% - 150%, Default 100%)
   const [zoomLevel, setZoomLevel] = useState(() => {
     const saved = localStorage.getItem('restly_zoom_level');
     return saved ? parseFloat(saved) : 100;
@@ -77,9 +77,10 @@ export function App() {
     localStorage.setItem('aether_theme', theme);
   }, [theme]);
 
-  // Apply Zoom Level
+  // Apply Full Application Zoom Scaling across all components, buttons, tabs, fonts, & inputs
   useEffect(() => {
-    document.body.style.zoom = `${zoomLevel}%`;
+    const zoomRatio = zoomLevel / 100;
+    document.documentElement.style.setProperty('--app-zoom', zoomRatio.toString());
     localStorage.setItem('restly_zoom_level', zoomLevel.toString());
   }, [zoomLevel]);
 
@@ -116,7 +117,7 @@ export function App() {
   // Active Tab
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
 
-  // Global Keyboard Shortcuts (Zoom In/Out, New Tab, Close Tab, Save)
+  // Global Keyboard Shortcuts (Full App Zoom In/Out, New Tab, Close Tab, Save)
   useEffect(() => {
     const handleKeyDown = (e) => {
       const isCmdOrCtrl = e.metaKey || e.ctrlKey;
