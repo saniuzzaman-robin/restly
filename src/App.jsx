@@ -7,8 +7,11 @@ import { ResponseViewer } from './components/ResponseViewer';
 import { EnvironmentModal } from './components/EnvironmentModal';
 import { CollectionModal } from './components/CollectionModal';
 import { GoogleAuthModal } from './components/GoogleAuthModal';
+import { SaveRequestModal } from './components/SaveRequestModal';
 import { SplitResizer } from './components/SplitResizer';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { Footer } from './components/Footer';
+import { ConsoleDrawer } from './components/ConsoleDrawer';
 
 import { loadInitialState, saveStateItem, STORAGE_KEYS } from './utils/storage';
 import { executeHttpRequest } from './utils/requestExecutor';
@@ -37,11 +40,13 @@ export function App() {
   const [tabs, setTabs] = useState(initialState.openTabs);
   const [activeTabId, setActiveTabId] = useState(initialState.activeTabId);
   const [consoleLogs, setConsoleLogs] = useState([]);
+  const [isConsoleOpen, setIsConsoleOpen] = useState(false);
 
   // UI Modals
   const [showEnvModal, setShowEnvModal] = useState(false);
   const [collectionModalMode, setCollectionModalMode] = useState(null); // 'create' | 'import' | null
   const [showGoogleModal, setShowGoogleModal] = useState(false);
+  const [showSaveModal, setShowSaveModal] = useState(false);
 
   // Application Zoom Level (70% - 150%, Auto-default to 110% on XL Viewports >= 1920px width)
   const [zoomLevel, setZoomLevel] = useState(() => {
@@ -137,7 +142,7 @@ export function App() {
   // Active Tab
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
 
-  // Global Keyboard Shortcuts (Full App Zoom In/Out, New Tab, Close Tab, Save)
+  // Global Keyboard Shortcuts (Full App Zoom In/Out, New Tab, Close Tab, Save, Console Drawer)
   useEffect(() => {
     const handleKeyDown = (e) => {
       const isCmdOrCtrl = e.metaKey || e.ctrlKey;
@@ -181,6 +186,11 @@ export function App() {
         if (activeTabId) {
           handleCloseTab(activeTabId);
         }
+      }
+      // 7. Toggle Postman Console Drawer (Cmd + J or Cmd + Option + C)
+      else if (key.toLowerCase() === 'j' || (e.altKey && key.toLowerCase() === 'c')) {
+        e.preventDefault();
+        setIsConsoleOpen((prev) => !prev);
       }
     };
 
@@ -307,11 +317,11 @@ export function App() {
       id: `tab-${Date.now()}`,
       name: 'New Request',
       method: 'GET',
-      url: '{{baseUrl}}/posts/1',
+      url: '',
       params: [],
-      headers: [{ key: 'Accept', value: 'application/json', enabled: true }],
+      headers: [],
       auth: { type: 'none' },
-      body: { mode: 'none', json: '' },
+      body: { mode: 'none', json: '', raw: '' },
       isDirty: false,
       isLoading: false,
     };
@@ -338,6 +348,27 @@ export function App() {
     if (!targetId) return;
     setTabs((prevTabs) =>
       prevTabs.map((t) => (t.id === targetId ? { ...t, ...updatedTab } : t))
+    );
+  };
+
+  // Rename Tab Inline
+  const handleRenameTab = (tabId, newName) => {
+    setTabs((prevTabs) =>
+      prevTabs.map((t) => {
+        if (t.id === tabId) {
+          if (t.name === newName) return t; // Unchanged, preserve isDirty state
+          return { ...t, name: newName, isDirty: true };
+        }
+        return t;
+      })
+    );
+
+    // Also update name in collections if saved
+    setCollections((prevCols) =>
+      prevCols.map((col) => ({
+        ...col,
+        items: col.items.map((item) => (item.id === tabId ? { ...item, name: newName } : item)),
+      }))
     );
   };
 
@@ -460,43 +491,74 @@ export function App() {
     }
   };
 
-  // Save Request to Collection
+  // Open Save Request Modal
   const handleSaveRequest = () => {
     if (!activeTab) return;
+    setShowSaveModal(true);
+  };
 
-    if (activeTab.collectionId) {
-      setCollections(
-        collections.map((col) => {
-          if (col.id === activeTab.collectionId) {
-            return {
-              ...col,
-              items: col.items.map((item) => (item.id === activeTab.id ? { ...activeTab, isDirty: false } : item)),
-            };
-          }
-          return col;
-        })
-      );
-      handleUpdateActiveTab({ isDirty: false });
-    } else {
-      if (collections.length > 0) {
-        const targetCol = collections[0];
-        const reqToSave = { ...activeTab, collectionId: targetCol.id, isDirty: false };
-        setCollections(
-          collections.map((col) =>
-            col.id === targetCol.id ? { ...col, items: [...col.items, reqToSave] } : col
-          )
-        );
-        handleUpdateActiveTab({ collectionId: targetCol.id, isDirty: false });
-      } else {
-        const newCol = {
-          id: `col-${Date.now()}`,
-          name: 'My Collection',
-          items: [{ ...activeTab, collectionId: `col-${Date.now()}`, isDirty: false }],
-        };
-        setCollections([...collections, newCol]);
-        handleUpdateActiveTab({ collectionId: newCol.id, isDirty: false });
+  // Confirm Save Request Modal Submission
+  const handleConfirmSaveRequest = (updatedReq) => {
+    const savedSnapshot = JSON.parse(JSON.stringify(updatedReq));
+    savedSnapshot.isDirty = false;
+    savedSnapshot.savedState = JSON.parse(JSON.stringify(updatedReq));
+
+    // Update Collections
+    let collectionFound = false;
+    const updatedCols = collections.map((col) => {
+      if (col.id === updatedReq.collectionId) {
+        collectionFound = true;
+        const existingIdx = col.items.findIndex((item) => item.id === updatedReq.id);
+        if (existingIdx >= 0) {
+          const newItems = [...col.items];
+          newItems[existingIdx] = savedSnapshot;
+          return { ...col, items: newItems };
+        }
+        return { ...col, items: [...col.items, savedSnapshot] };
+      }
+      return col;
+    });
+
+    if (!collectionFound && updatedReq.collectionId) {
+      updatedCols.push({
+        id: updatedReq.collectionId,
+        name: 'My Collection',
+        items: [savedSnapshot],
+      });
+    }
+
+    setCollections(updatedCols);
+    handleUpdateActiveTab(savedSnapshot);
+    setShowSaveModal(false);
+  };
+
+  // Revert Request Changes to Last Saved State
+  const handleRevertRequest = () => {
+    if (!activeTab) return;
+
+    if (activeTab.savedState) {
+      handleUpdateActiveTab({
+        ...activeTab.savedState,
+        isDirty: false,
+      });
+      return;
+    }
+
+    // Check collections for matching saved item
+    for (const col of collections) {
+      const match = col.items.find((item) => item.id === activeTab.id);
+      if (match) {
+        handleUpdateActiveTab({
+          ...match,
+          isDirty: false,
+          savedState: JSON.parse(JSON.stringify(match)),
+        });
+        return;
       }
     }
+
+    // Fallback: clear dirty flag
+    handleUpdateActiveTab({ isDirty: false });
   };
 
   // Sidebar Request Select
@@ -505,7 +567,7 @@ export function App() {
     if (existingTab) {
       setActiveTabId(existingTab.id);
     } else {
-      const newTab = { ...req, isDirty: false, isLoading: false };
+      const newTab = { ...req, isDirty: false, isLoading: false, savedState: JSON.parse(JSON.stringify(req)) };
       setTabs([...tabs, newTab]);
       setActiveTabId(newTab.id);
     }
@@ -528,14 +590,16 @@ export function App() {
 
   // Collection CRUD
   const handleCreateCollection = (name, description) => {
+    const newColId = `col-${Date.now()}`;
     const newCol = {
-      id: `col-${Date.now()}`,
+      id: newColId,
       name,
-      description,
+      description: description || '',
       items: [],
     };
     setCollections([...collections, newCol]);
     setCollectionModalMode(null);
+    return newColId;
   };
 
   const handleCreateRequestInCollection = (collectionId) => {
@@ -544,11 +608,11 @@ export function App() {
       collectionId,
       name: 'New Request',
       method: 'GET',
-      url: '{{baseUrl}}/posts/1',
+      url: '',
       params: [],
-      headers: [{ key: 'Accept', value: 'application/json', enabled: true }],
+      headers: [],
       auth: { type: 'none' },
-      body: { mode: 'none', json: '' },
+      body: { mode: 'none', json: '', raw: '' },
       isDirty: false,
       isLoading: false,
     };
@@ -633,13 +697,14 @@ export function App() {
 
           {/* Central Content Area */}
           <main className="content-area">
-            {/* Top Multi-Tab Bar */}
+            {/* Top Multi-Tab Bar with Double-Click Inline Renaming */}
             <TabBar
               tabs={tabs}
               activeTabId={activeTabId}
               onSelectTab={handleSelectTab}
               onCloseTab={handleCloseTab}
               onAddTab={handleAddTab}
+              onRenameTab={handleRenameTab}
             />
 
             {/* Request & Response Split Pane with Resizer */}
@@ -651,6 +716,7 @@ export function App() {
                   onSend={handleSendRequest}
                   onCancel={() => handleCancelRequest(activeTab.id)}
                   onSave={handleSaveRequest}
+                  onRevert={handleRevertRequest}
                   activeEnv={activeEnv}
                   activeEnvVars={activeEnvVars}
                   isLoading={activeTab.isLoading}
@@ -676,27 +742,36 @@ export function App() {
           </main>
         </div>
 
-        {/* Bottom Status Bar / Footer */}
-        <footer className="app-footer">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <span>RESTLY Studio • Active Env: <strong>{activeEnv?.name || 'No Environment'}</strong></span>
-            <span>|</span>
-            <span>Zoom: <strong>{zoomLevel}%</strong></span>
-            <span>|</span>
-            <span>Tabs Open: {tabs.length}</span>
-          </div>
+        {/* Postman Console Drawer */}
+        <ConsoleDrawer
+          isOpen={isConsoleOpen}
+          onClose={() => setIsConsoleOpen(false)}
+          logs={consoleLogs}
+          onClearLogs={() => setConsoleLogs([])}
+        />
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            {googleUser && (
-              <span style={{ color: 'var(--text-muted)' }}>
-                Sync: {syncStatus === 'synced' ? '✓ Google Drive Synced' : syncStatus === 'syncing' ? 'Syncing...' : 'Idle'}
-              </span>
-            )}
-            <span>Online Mode</span>
-          </div>
-        </footer>
+        {/* Bottom Status Bar / Footer */}
+        <Footer
+          activeEnv={activeEnv}
+          collectionsCount={collections.length}
+          historyCount={history.length}
+          lastResponse={activeTab?.response}
+          consoleLogsCount={consoleLogs.length}
+          isConsoleOpen={isConsoleOpen}
+          onToggleConsole={() => setIsConsoleOpen((prev) => !prev)}
+        />
 
         {/* Modals */}
+        {showSaveModal && activeTab && (
+          <SaveRequestModal
+            request={activeTab}
+            collections={collections}
+            onClose={() => setShowSaveModal(false)}
+            onSave={handleConfirmSaveRequest}
+            onCreateCollection={(name) => handleCreateCollection(name, '')}
+          />
+        )}
+
         <EnvironmentModal
           isOpen={showEnvModal}
           onClose={() => setShowEnvModal(false)}

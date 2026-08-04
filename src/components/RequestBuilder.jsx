@@ -9,7 +9,7 @@ import { InlineCurlImport } from './InlineCurlImport';
 import { InlineCodeSnippet } from './InlineCodeSnippet';
 import { CustomSelect } from './CustomSelect';
 import { parseCurlCommand } from '../utils/curlParser';
-import { Send, Save, Code, Sliders, FileCode, Shield, Terminal, Cookie, Settings, Code2, XCircle } from 'lucide-react';
+import { Send, Save, Code, Sliders, FileCode, Shield, Terminal, Cookie, Settings, Code2, XCircle, RotateCcw } from 'lucide-react';
 
 const HTTP_METHOD_OPTIONS = [
   { value: 'GET', label: 'GET' },
@@ -27,6 +27,7 @@ export const RequestBuilder = ({
   onSend,
   onCancel,
   onSave,
+  onRevert,
   activeEnv,
   activeEnvVars = [],
   isLoading,
@@ -52,12 +53,12 @@ export const RequestBuilder = ({
         const parsed = parseCurlCommand(pastedText);
         onChange({
           ...request,
-          method: parsed.method || request.method,
-          url: parsed.url || request.url,
-          params: parsed.params?.length ? parsed.params : request.params,
-          headers: parsed.headers?.length ? parsed.headers : request.headers,
-          auth: parsed.auth?.type !== 'none' ? parsed.auth : request.auth,
-          body: parsed.body?.mode !== 'none' ? parsed.body : request.body,
+          method: parsed.method || 'GET',
+          url: parsed.url || '',
+          params: parsed.params || [],
+          headers: parsed.headers || [],
+          auth: parsed.auth || { type: 'none' },
+          body: parsed.body || { mode: 'none', json: '', raw: '' },
           isDirty: true,
         });
       } catch (err) {
@@ -137,12 +138,34 @@ export const RequestBuilder = ({
           </button>
         )}
 
+        {/* Revert Button for Unsaved Changes */}
+        {request.isDirty && onRevert && (
+          <button
+            type="button"
+            className="aether-btn"
+            onClick={onRevert}
+            title="Revert request to last saved state"
+            style={{
+              height: '36px',
+              padding: '0 12px',
+              color: '#F59E0B',
+              borderColor: 'rgba(245, 158, 11, 0.4)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            <RotateCcw size={14} /> Revert
+          </button>
+        )}
+
         {/* Save Button */}
         <button
+          type="button"
           className="aether-btn"
           onClick={onSave}
           title="Save Request"
-          style={{ height: '36px' }}
+          style={{ height: '36px', display: 'flex', alignItems: 'center', gap: '6px' }}
         >
           <Save size={14} /> Save
         </button>

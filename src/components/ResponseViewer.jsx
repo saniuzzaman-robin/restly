@@ -143,6 +143,36 @@ export const ResponseViewer = ({ response, activeTab: externalTab, onTabChange }
     return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [isHovered]);
 
+  // Calculate search matches in rawText (Hook MUST be called unconditionally at top level)
+  const matches = useMemo(() => {
+    const query = searchState.query;
+    const rawText = response?.rawText;
+    if (!query || !rawText) return [];
+
+    try {
+      let flags = searchState.matchCase ? 'g' : 'gi';
+      let pattern = query;
+
+      if (!searchState.useRegex) {
+        pattern = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      }
+      if (searchState.wholeWord) {
+        pattern = `\\b${pattern}\\b`;
+      }
+
+      const regex = new RegExp(pattern, flags);
+      const results = [];
+      let match;
+      while ((match = regex.exec(rawText)) !== null) {
+        results.push(match.index);
+        if (regex.lastIndex === match.index) regex.lastIndex++;
+      }
+      return results;
+    } catch (e) {
+      return [];
+    }
+  }, [searchState, response?.rawText]);
+
   if (!response) {
     return (
       <div className="pane-response" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
@@ -175,35 +205,6 @@ export const ResponseViewer = ({ response, activeTab: externalTab, onTabChange }
     a.click();
     URL.revokeObjectURL(url);
   };
-
-  // Calculate search matches in rawText
-  const matches = useMemo(() => {
-    const query = searchState.query;
-    if (!query || !response.rawText) return [];
-
-    try {
-      let flags = searchState.matchCase ? 'g' : 'gi';
-      let pattern = query;
-
-      if (!searchState.useRegex) {
-        pattern = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      }
-      if (searchState.wholeWord) {
-        pattern = `\\b${pattern}\\b`;
-      }
-
-      const regex = new RegExp(pattern, flags);
-      const results = [];
-      let match;
-      while ((match = regex.exec(response.rawText)) !== null) {
-        results.push(match.index);
-        if (regex.lastIndex === match.index) regex.lastIndex++;
-      }
-      return results;
-    } catch (e) {
-      return [];
-    }
-  }, [searchState, response.rawText]);
 
   const handleNextMatch = () => {
     if (matches.length > 0) {

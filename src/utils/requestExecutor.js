@@ -2,6 +2,7 @@
  * HTTP Request Execution Engine using Fetch API with variable resolution,
  * multipart form files, binary payload support, cookie parsing,
  * Postman request settings (timeout, redirects, URL auto-encoding),
+ * Native Local Node.js Proxy Engine for zero CORS restrictions,
  * and request cancellation support via AbortSignal.
  */
 import { resolveVariables } from './variableResolver';
@@ -182,7 +183,8 @@ export const executeHttpRequest = async (requestConfig, envVariables = [], store
       }, settings.requestTimeoutMs);
     }
 
-    // 7. Execute Fetch Request
+    // 7. Execute Fetch Request with Native Local Node.js Proxy Fallback
+    const targetUrl = urlObj.toString();
     const fetchOptions = {
       method,
       headers: headersObj,
@@ -191,7 +193,26 @@ export const executeHttpRequest = async (requestConfig, envVariables = [], store
       redirect: settings.followRedirects === false ? 'manual' : 'follow',
     };
 
-    const response = await fetch(urlObj.toString(), fetchOptions);
+    let response;
+    let usedCorsProxy = false;
+
+    try {
+      response = await fetch(targetUrl, fetchOptions);
+    } catch (directErr) {
+      // If direct fetch failed due to CORS / Network restriction and was NOT cancelled by user or timeout
+      if (directErr.name !== 'AbortError' && !controller.signal.aborted) {
+        // Retry exclusively using Native Local Node.js Dev Server Proxy (/api-proxy)
+        try {
+          const localProxyUrl = `/api-proxy?url=${encodeURIComponent(targetUrl)}`;
+          response = await fetch(localProxyUrl, fetchOptions);
+          usedCorsProxy = true;
+        } catch (localProxyErr) {
+          throw directErr;
+        }
+      } else {
+        throw directErr;
+      }
+    }
 
     if (timeoutId) clearTimeout(timeoutId);
 
@@ -220,6 +241,10 @@ export const executeHttpRequest = async (requestConfig, envVariables = [], store
       }
     });
 
+    if (usedCorsProxy) {
+      responseHeaders.push({ key: 'X-Restly-CORS-Bypass', value: 'Active via Native Local Proxy' });
+    }
+
     // 9. Read Response Body & Compute Size
     const contentType = response.headers.get('content-type') || '';
     const rawText = await response.text();
@@ -238,7 +263,7 @@ export const executeHttpRequest = async (requestConfig, envVariables = [], store
     }
 
     return {
-      success: true,
+      success: response.ok,
       status: response.status,
       statusText: response.statusText,
       headers: responseHeaders,
@@ -248,8 +273,9 @@ export const executeHttpRequest = async (requestConfig, envVariables = [], store
       isJson,
       durationMs,
       sizeBytes,
-      url: urlObj.toString(),
+      url: targetUrl,
       requestHeaders: headersObj,
+      usedCorsProxy,
       timestamp: new Date().toISOString(),
     };
   } catch (err) {
@@ -280,7 +306,8 @@ export const executeHttpRequest = async (requestConfig, envVariables = [], store
       isCancelled: isUserCancelled,
       durationMs,
       sizeBytes: 0,
-      url: requestConfig.url,
+      url: requestConfig.url || '',
+      requestHeaders: {},
       timestamp: new Date().toISOString(),
     };
   }

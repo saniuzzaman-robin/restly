@@ -1,7 +1,40 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Plus, X } from 'lucide-react';
 
-export const TabBar = ({ tabs = [], activeTabId, onSelectTab, onCloseTab, onAddTab }) => {
+export const TabBar = ({
+  tabs = [],
+  activeTabId,
+  onSelectTab,
+  onCloseTab,
+  onAddTab,
+  onRenameTab,
+}) => {
+  const [editingTabId, setEditingTabId] = useState(null);
+  const [editingName, setEditingName] = useState('');
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (editingTabId && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editingTabId]);
+
+  const handleStartEditing = (tab) => {
+    setEditingTabId(tab.id);
+    setEditingName(tab.name || tab.url || 'New Request');
+  };
+
+  const handleFinishEditing = (tab) => {
+    const trimmed = editingName.trim();
+    const currentName = tab.name || tab.url || 'New Request';
+
+    if (trimmed && trimmed !== currentName && onRenameTab) {
+      onRenameTab(tab.id, trimmed);
+    }
+    setEditingTabId(null);
+  };
+
   return (
     <div style={{
       display: 'flex',
@@ -14,10 +47,14 @@ export const TabBar = ({ tabs = [], activeTabId, onSelectTab, onCloseTab, onAddT
     }}>
       {tabs.map((tab) => {
         const isActive = tab.id === activeTabId;
+        const isEditing = editingTabId === tab.id;
+
         return (
           <div
             key={tab.id}
             onClick={() => onSelectTab(tab.id)}
+            onDoubleClick={() => handleStartEditing(tab)}
+            title="Double-click to rename request tab"
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -39,24 +76,52 @@ export const TabBar = ({ tabs = [], activeTabId, onSelectTab, onCloseTab, onAddT
               {tab.method || 'GET'}
             </span>
 
-            <span style={{
-              flex: 1,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              fontWeight: isActive ? '600' : '400',
-            }}>
-              {tab.name || tab.url || 'Untitled Request'}
-            </span>
+            {isEditing ? (
+              <input
+                ref={inputRef}
+                type="text"
+                value={editingName}
+                onChange={(e) => setEditingName(e.target.value)}
+                onBlur={() => handleFinishEditing(tab)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleFinishEditing(tab);
+                  if (e.key === 'Escape') setEditingTabId(null);
+                }}
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  flex: 1,
+                  background: 'var(--bg-input)',
+                  color: 'var(--text-main)',
+                  border: '1px solid var(--accent-primary)',
+                  borderRadius: '3px',
+                  padding: '1px 4px',
+                  fontSize: '11px',
+                  outline: 'none',
+                }}
+              />
+            ) : (
+              <span style={{
+                flex: 1,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                fontWeight: isActive ? '600' : '400',
+              }}>
+                {tab.name || tab.url || 'Untitled Request'}
+              </span>
+            )}
 
             {tab.isDirty && (
-              <span style={{
-                width: '6px',
-                height: '6px',
-                borderRadius: '50%',
-                background: 'var(--accent-primary)',
-                display: 'inline-block'
-              }}></span>
+              <span
+                title="Unsaved changes"
+                style={{
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  background: 'var(--accent-primary)',
+                  display: 'inline-block'
+                }}
+              ></span>
             )}
 
             {tabs.length > 1 && (
