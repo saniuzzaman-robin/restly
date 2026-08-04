@@ -133,10 +133,9 @@ export const CustomSelect = ({
                   fontWeight: isSelected ? '700' : '500',
                   color: isMethodVariant
                     ? `var(--method-${opt.value.toLowerCase()}, var(--text-main))`
-                    : isSelected
-                    ? 'var(--accent-primary)'
                     : 'var(--text-main)',
-                  background: isSelected ? 'var(--bg-card-hover)' : 'transparent',
+                  background: isSelected ? 'var(--bg-card)' : 'transparent',
+                  borderLeft: isSelected && !isMethodVariant ? '3px solid var(--accent-primary)' : '3px solid transparent',
                   cursor: 'pointer',
                   transition: 'background 0.1s ease',
                 }}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { ScrollableTabsContainer } from './ScrollableTabsContainer';
 import { JsonPrettyViewer } from './JsonPrettyViewer';
 import { VisualizerViewer } from './VisualizerViewer';
 import { CustomSelect } from './CustomSelect';
@@ -108,6 +109,54 @@ const HexViewer = ({ text = '' }) => {
       {hexLines.join('\n')}
     </pre>
   );
+};
+
+const getPreviewSrcDoc = (rawText) => {
+  if (!rawText) {
+    return '<html><body style="font-family: -apple-system, sans-serif; padding: 20px; color: #666; background: #fff;">No preview content available</body></html>';
+  }
+
+  const fontReset = `
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        min-width: 100%;
+        background: #ffffff;
+        color: #1a1a1a;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        font-size: 13px;
+        line-height: 1.5;
+        overflow-x: auto;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        text-rendering: optimizeLegibility;
+      }
+      body { padding: 16px; }
+      pre, code {
+        white-space: pre-wrap;
+        word-break: break-word;
+        overflow-x: auto;
+        font-family: 'JetBrains Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+      }
+      img, svg, video { max-width: 100%; height: auto; }
+      table { max-width: 100%; overflow-x: auto; }
+    </style>
+  `;
+
+  if (/<html/i.test(rawText) || /<!DOCTYPE/i.test(rawText)) {
+    if (/<head/i.test(rawText)) {
+      return rawText.replace(/<\/head>/i, `${fontReset}</head>`);
+    } else if (/<body/i.test(rawText)) {
+      return rawText.replace(/<body/i, `<head>${fontReset}</head><body`);
+    }
+    return `${fontReset}${rawText}`;
+  }
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8">${fontReset}</head><body><pre>${rawText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre></body></html>`;
 };
 
 export const ResponseViewer = ({ response, activeTab: externalTab, onTabChange }) => {
@@ -331,57 +380,126 @@ export const ResponseViewer = ({ response, activeTab: externalTab, onTabChange }
         </div>
       </div>
 
-      {/* Postman Style View Tabs Bar */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-tab)', paddingRight: '12px', paddingLeft: '8px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          {/* 1. Body View Dropdown (Pretty, Raw, Hex) */}
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <CustomSelect
-              options={BODY_VIEW_OPTIONS}
-              value={bodyViewMode}
-              onChange={(val) => {
-                setBodyViewMode(val);
-                setActiveTab('body');
-              }}
-              size="sm"
-              style={{ width: '130px' }}
-            />
+      {/* Postman Style View Tabs Bar with Scroll Arrow Controls */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-tab)', paddingRight: '12px', paddingLeft: '8px', minWidth: 0, width: '100%' }}>
+        <ScrollableTabsContainer style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            {/* Body Tab Button */}
+            <button
+              className={`sub-tab-btn ${activeTab === 'body' ? 'active' : ''}`}
+              onClick={() => setActiveTab('body')}
+              style={{ fontWeight: activeTab === 'body' ? '700' : '500' }}
+            >
+              Body
+            </button>
+
+            {/* Pretty / Raw / Hex Sub-Pill Selector */}
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '6px',
+              padding: '2px',
+              gap: '2px',
+            }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setBodyViewMode('pretty');
+                  setActiveTab('body');
+                }}
+                style={{
+                  padding: '2px 8px',
+                  fontSize: '11px',
+                  borderRadius: '4px',
+                  border: 'none',
+                  background: activeTab === 'body' && bodyViewMode === 'pretty' ? 'var(--accent-primary)' : 'transparent',
+                  color: activeTab === 'body' && bodyViewMode === 'pretty' ? '#FFFFFF' : 'var(--text-muted)',
+                  fontWeight: activeTab === 'body' && bodyViewMode === 'pretty' ? '600' : '400',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                Pretty
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setBodyViewMode('raw');
+                  setActiveTab('body');
+                }}
+                style={{
+                  padding: '2px 8px',
+                  fontSize: '11px',
+                  borderRadius: '4px',
+                  border: 'none',
+                  background: activeTab === 'body' && bodyViewMode === 'raw' ? 'var(--accent-primary)' : 'transparent',
+                  color: activeTab === 'body' && bodyViewMode === 'raw' ? '#FFFFFF' : 'var(--text-muted)',
+                  fontWeight: activeTab === 'body' && bodyViewMode === 'raw' ? '600' : '400',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                Raw
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setBodyViewMode('hex');
+                  setActiveTab('body');
+                }}
+                style={{
+                  padding: '2px 8px',
+                  fontSize: '11px',
+                  borderRadius: '4px',
+                  border: 'none',
+                  background: activeTab === 'body' && bodyViewMode === 'hex' ? 'var(--accent-primary)' : 'transparent',
+                  color: activeTab === 'body' && bodyViewMode === 'hex' ? '#FFFFFF' : 'var(--text-muted)',
+                  fontWeight: activeTab === 'body' && bodyViewMode === 'hex' ? '600' : '400',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                Hex
+              </button>
+            </div>
+
+            <div style={{ width: '1px', height: '16px', background: 'var(--border-color)', margin: '0 4px', flexShrink: 0 }}></div>
+
+            {/* Preview Button */}
+            <button
+              className={`sub-tab-btn ${activeTab === 'preview' ? 'active' : ''}`}
+              onClick={() => setActiveTab('preview')}
+            >
+              Preview
+            </button>
+
+            {/* Visualize Button */}
+            <button
+              className={`sub-tab-btn ${activeTab === 'visualize' ? 'active' : ''}`}
+              onClick={() => setActiveTab('visualize')}
+            >
+              Visualize
+            </button>
+
+            {/* Headers Button */}
+            <button
+              className={`sub-tab-btn ${activeTab === 'headers' ? 'active' : ''}`}
+              onClick={() => setActiveTab('headers')}
+            >
+              Headers ({response.headers?.length || 0})
+            </button>
+
+            {/* Cookies Button */}
+            <button
+              className={`sub-tab-btn ${activeTab === 'cookies' ? 'active' : ''}`}
+              onClick={() => setActiveTab('cookies')}
+            >
+              Cookies ({response.cookies?.length || 0})
+            </button>
           </div>
-
-          <div style={{ width: '1px', height: '16px', background: 'var(--border-color)', margin: '0 4px' }}></div>
-
-          {/* 2. Preview Button */}
-          <button
-            className={`sub-tab-btn ${activeTab === 'preview' ? 'active' : ''}`}
-            onClick={() => setActiveTab('preview')}
-          >
-            Preview
-          </button>
-
-          {/* 3. Visualize Button */}
-          <button
-            className={`sub-tab-btn ${activeTab === 'visualize' ? 'active' : ''}`}
-            onClick={() => setActiveTab('visualize')}
-          >
-            Visualize
-          </button>
-
-          {/* 4. Headers Button */}
-          <button
-            className={`sub-tab-btn ${activeTab === 'headers' ? 'active' : ''}`}
-            onClick={() => setActiveTab('headers')}
-          >
-            Headers ({response.headers?.length || 0})
-          </button>
-
-          {/* 5. Cookies Button */}
-          <button
-            className={`sub-tab-btn ${activeTab === 'cookies' ? 'active' : ''}`}
-            onClick={() => setActiveTab('cookies')}
-          >
-            Cookies ({response.cookies?.length || 0})
-          </button>
-        </div>
+        </ScrollableTabsContainer>
 
         {/* Search & Format Sub-Type Controls Bar */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -408,7 +526,16 @@ export const ResponseViewer = ({ response, activeTab: externalTab, onTabChange }
       </div>
 
       {/* Response Content View */}
-      <div style={{ flex: 1, overflow: 'auto', padding: '12px 16px', fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
+      <div style={{
+        flex: 1,
+        overflow: activeTab === 'body' && bodyViewMode === 'pretty' ? 'hidden' : 'auto',
+        padding: activeTab === 'body' && bodyViewMode === 'pretty' ? 0 : '12px 16px',
+        fontFamily: 'var(--font-mono)',
+        fontSize: '12px',
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 0,
+      }}>
         {!response.success && (
           <div style={{
             background: 'rgba(239, 68, 68, 0.1)',
@@ -465,12 +592,31 @@ export const ResponseViewer = ({ response, activeTab: externalTab, onTabChange }
 
         {/* PREVIEW TAB */}
         {activeTab === 'preview' && (
-          <div style={{ height: '100%', minHeight: '300px', background: '#FFFFFF', borderRadius: '6px', overflow: 'hidden' }}>
+          <div style={{
+            flex: 1,
+            width: '100%',
+            height: '100%',
+            minHeight: '300px',
+            background: '#FFFFFF',
+            borderRadius: '6px',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            WebkitFontSmoothing: 'antialiased',
+            transform: 'translateZ(0)',
+          }}>
             <iframe
               title="HTML Response Preview"
-              srcDoc={response.rawText || ''}
-              style={{ width: '100%', height: '100%', border: 'none', minHeight: '300px' }}
-              sandbox=""
+              srcDoc={getPreviewSrcDoc(response.rawText)}
+              style={{
+                width: '100%',
+                height: '100%',
+                border: 'none',
+                flex: 1,
+                display: 'block',
+                background: '#FFFFFF',
+              }}
+              sandbox="allow-same-origin"
             />
           </div>
         )}

@@ -5,11 +5,13 @@ import { TabBar } from './components/TabBar';
 import { RequestBuilder } from './components/RequestBuilder';
 import { ResponseViewer } from './components/ResponseViewer';
 import { EnvironmentModal } from './components/EnvironmentModal';
+import { EnvironmentEditorTab } from './components/EnvironmentEditorTab';
 import { CollectionModal } from './components/CollectionModal';
 import { GoogleAuthModal } from './components/GoogleAuthModal';
 import { SaveRequestModal } from './components/SaveRequestModal';
 import { BackupRestoreModal } from './components/BackupRestoreModal';
 import { SplitResizer } from './components/SplitResizer';
+import { SidebarResizer } from './components/SidebarResizer';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Footer } from './components/Footer';
 import { ConsoleDrawer } from './components/ConsoleDrawer';
@@ -74,7 +76,17 @@ export function App() {
     return localStorage.getItem(GOOGLE_KEYS.LAST_SYNC) || null;
   });
 
-  // Resizable Splitter
+  // Resizable Sidebar & Splitter
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const saved = localStorage.getItem('restly_sidebar_width');
+    return saved ? parseInt(saved, 10) : 280;
+  });
+
+  const handleSidebarResize = (newWidth) => {
+    setSidebarWidth(newWidth);
+    localStorage.setItem('restly_sidebar_width', newWidth.toString());
+  };
+
   const [requestPaneHeightPct, setRequestPaneHeightPct] = useState(48);
 
   // Theme
@@ -647,6 +659,74 @@ export function App() {
     setEnvironments(updatedEnvs);
   };
 
+  const handleOpenEnvTab = (env) => {
+    const tabId = `env-tab-${env.id}`;
+    const existing = tabs.find((t) => t.id === tabId);
+    if (existing) {
+      setActiveTabId(tabId);
+      return;
+    }
+
+    const envTab = {
+      id: tabId,
+      type: 'environment',
+      envId: env.id,
+      name: env.name,
+    };
+
+    setTabs([...tabs, envTab]);
+    setActiveTabId(tabId);
+  };
+
+  const handleCreateEnv = () => {
+    const newEnv = {
+      id: `env-${Date.now()}`,
+      name: `New Environment ${environments.length + 1}`,
+      variables: [
+        { key: 'baseUrl', value: 'https://api.example.com', enabled: true },
+        { key: 'apiKey', value: 'secret_key_123', enabled: true },
+      ],
+    };
+
+    const updated = [...environments, newEnv];
+    setEnvironments(updated);
+    if (!activeEnvId) {
+      setActiveEnvId(newEnv.id);
+    }
+    handleOpenEnvTab(newEnv);
+  };
+
+  const handleUpdateEnvironment = (updatedEnv) => {
+    setEnvironments((prev) =>
+      prev.map((e) => (e.id === updatedEnv.id ? updatedEnv : e))
+    );
+    setTabs((prev) =>
+      prev.map((t) =>
+        t.id === `env-tab-${updatedEnv.id}` ? { ...t, name: updatedEnv.name } : t
+      )
+    );
+  };
+
+  const handleDeleteEnvironment = (envId) => {
+    const updated = environments.filter((e) => e.id !== envId);
+    setEnvironments(updated);
+    if (activeEnvId === envId) {
+      setActiveEnvId(updated.length > 0 ? updated[0].id : null);
+    }
+    const tabId = `env-tab-${envId}`;
+    handleCloseTab(tabId);
+  };
+
+  const handleDuplicateEnvironment = (env) => {
+    const dupEnv = {
+      id: `env-${Date.now()}`,
+      name: `${env.name} (Copy)`,
+      variables: JSON.parse(JSON.stringify(env.variables || [])),
+    };
+    setEnvironments([...environments, dupEnv]);
+    handleOpenEnvTab(dupEnv);
+  };
+
   // Export Collection JSON
   const handleExportCollection = (colId) => {
     const target = collections.find((c) => c.id === colId) || collections[0];
@@ -687,7 +767,10 @@ export function App() {
         <div className="main-workspace">
           {/* Left Sidebar */}
           <Sidebar
+            width={sidebarWidth}
             collections={collections}
+            environments={environments}
+            activeEnvId={activeEnvId}
             history={history}
             activeRequestId={activeTab?.id}
             onSelectRequest={handleSelectSidebarRequest}
@@ -695,8 +778,18 @@ export function App() {
             onCreateRequestInCollection={handleCreateRequestInCollection}
             onDeleteCollection={handleDeleteCollection}
             onDeleteRequest={handleDeleteRequest}
+            onSelectEnv={(envId) => setActiveEnvId(envId)}
+            onOpenEnvTab={handleOpenEnvTab}
+            onCreateEnv={handleCreateEnv}
+            onDeleteEnv={handleDeleteEnvironment}
             onSelectHistoryItem={handleSelectHistoryItem}
             onClearHistory={() => setHistory([])}
+          />
+
+          {/* Draggable Horizontal Sidebar Resizer */}
+          <SidebarResizer
+            width={sidebarWidth}
+            onResize={handleSidebarResize}
           />
 
           {/* Central Content Area */}
@@ -711,36 +804,59 @@ export function App() {
               onRenameTab={handleRenameTab}
             />
 
-            {/* Request & Response Split Pane with Resizer */}
+            {/* Render Environment Tab vs Request Tab */}
             {activeTab ? (
-              <div className="editor-response-split">
-                <RequestBuilder
-                  request={activeTab}
-                  onChange={handleUpdateActiveTab}
-                  onSend={handleSendRequest}
-                  onCancel={() => handleCancelRequest(activeTab.id)}
-                  onSave={handleSaveRequest}
-                  onRevert={handleRevertRequest}
-                  activeEnv={activeEnv}
-                  activeEnvVars={activeEnvVars}
-                  isLoading={activeTab.isLoading}
-                  heightPct={requestPaneHeightPct}
-                />
+              activeTab.type === 'environment' ? (
+                (() => {
+                  const targetEnv = environments.find((e) => e.id === activeTab.envId);
+                  if (!targetEnv) {
+                    return (
+                      <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                        Environment profile not found or deleted.
+                      </div>
+                    );
+                  }
+                  return (
+                    <EnvironmentEditorTab
+                      environment={targetEnv}
+                      isActiveEnv={targetEnv.id === activeEnvId}
+                      onSetActiveEnv={() => setActiveEnvId(targetEnv.id)}
+                      onUpdateEnvironment={handleUpdateEnvironment}
+                      onDeleteEnvironment={() => handleDeleteEnvironment(targetEnv.id)}
+                      onDuplicateEnvironment={() => handleDuplicateEnvironment(targetEnv)}
+                    />
+                  );
+                })()
+              ) : (
+                <div className="editor-response-split">
+                  <RequestBuilder
+                    request={activeTab}
+                    onChange={handleUpdateActiveTab}
+                    onSend={handleSendRequest}
+                    onCancel={() => handleCancelRequest(activeTab.id)}
+                    onSave={handleSaveRequest}
+                    onRevert={handleRevertRequest}
+                    activeEnv={activeEnv}
+                    activeEnvVars={activeEnvVars}
+                    isLoading={activeTab.isLoading}
+                    heightPct={requestPaneHeightPct}
+                  />
 
-                {/* Draggable Vertical Splitter */}
-                <SplitResizer
-                  requestHeight={requestPaneHeightPct}
-                  onResize={(newPct) => setRequestPaneHeightPct(newPct)}
-                />
+                  {/* Draggable Vertical Splitter */}
+                  <SplitResizer
+                    requestHeight={requestPaneHeightPct}
+                    onResize={(newPct) => setRequestPaneHeightPct(newPct)}
+                  />
 
-                <ResponseViewer
-                  response={activeTab.response}
-                  isLoading={activeTab.isLoading}
-                />
-              </div>
+                  <ResponseViewer
+                    response={activeTab.response}
+                    isLoading={activeTab.isLoading}
+                  />
+                </div>
+              )
             ) : (
               <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                No open request tabs. Click + to create a new request.
+                No open tabs. Click <strong>+</strong> to create a new request or select an environment from the sidebar.
               </div>
             )}
           </main>

@@ -86,7 +86,7 @@ export const RequestSettingsEditor = ({ settings = DEFAULT_REQUEST_SETTINGS, onC
   ];
 
   return (
-    <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: '720px' }}>
+    <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '16px', width: '100%', boxSizing: 'border-box' }}>
       <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>
         POSTMAN REQUEST CONFIGURATION & EXECUTION SETTINGS
       </div>

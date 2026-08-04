@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, X } from 'lucide-react';
+import { Plus, X, Globe } from 'lucide-react';
+import { ScrollableTabsContainer } from './ScrollableTabsContainer';
 
 export const TabBar = ({
   tabs = [],
@@ -41,127 +42,140 @@ export const TabBar = ({
       alignItems: 'center',
       background: 'var(--bg-tab)',
       borderBottom: '1px solid var(--border-color)',
-      overflowX: 'auto',
       paddingLeft: '4px',
-      gap: '2px'
+      position: 'relative',
     }}>
-      {tabs.map((tab) => {
-        const isActive = tab.id === activeTabId;
-        const isEditing = editingTabId === tab.id;
+      <ScrollableTabsContainer style={{ flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '2px', paddingRight: '8px' }}>
+          {tabs.map((tab) => {
+            const isActive = tab.id === activeTabId;
+            const isEditing = editingTabId === tab.id;
 
-        return (
-          <div
-            key={tab.id}
-            onClick={() => onSelectTab(tab.id)}
-            onDoubleClick={() => handleStartEditing(tab)}
-            title="Double-click to rename request tab"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '8px 14px',
-              background: isActive ? 'var(--bg-surface)' : 'transparent',
-              color: isActive ? 'var(--text-main)' : 'var(--text-muted)',
-              borderTop: isActive ? '2px solid var(--accent-primary)' : '2px solid transparent',
-              borderRight: '1px solid var(--border-color)',
-              cursor: 'pointer',
-              fontSize: '12px',
-              minWidth: '130px',
-              maxWidth: '220px',
-              userSelect: 'none',
-              transition: 'all 0.1s ease',
-            }}
-          >
-            <span className={`method-badge ${tab.method || 'GET'}`} style={{ fontSize: '9px', padding: '1px 4px' }}>
-              {tab.method || 'GET'}
-            </span>
-
-            {isEditing ? (
-              <input
-                ref={inputRef}
-                type="text"
-                value={editingName}
-                onChange={(e) => setEditingName(e.target.value)}
-                onBlur={() => handleFinishEditing(tab)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleFinishEditing(tab);
-                  if (e.key === 'Escape') setEditingTabId(null);
-                }}
-                onClick={(e) => e.stopPropagation()}
+            return (
+              <div
+                key={tab.id}
+                onClick={() => onSelectTab(tab.id)}
+                onDoubleClick={() => handleStartEditing(tab)}
+                title="Double-click to rename tab"
                 style={{
-                  flex: 1,
-                  background: 'var(--bg-input)',
-                  color: 'var(--text-main)',
-                  border: '1px solid var(--accent-primary)',
-                  borderRadius: '3px',
-                  padding: '1px 4px',
-                  fontSize: '11px',
-                  outline: 'none',
-                }}
-              />
-            ) : (
-              <span style={{
-                flex: 1,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                fontWeight: isActive ? '600' : '400',
-              }}>
-                {tab.name || tab.url || 'Untitled Request'}
-              </span>
-            )}
-
-            {tab.isDirty && (
-              <span
-                title="Unsaved changes"
-                style={{
-                  width: '6px',
-                  height: '6px',
-                  borderRadius: '50%',
-                  background: 'var(--accent-primary)',
-                  display: 'inline-block'
-                }}
-              ></span>
-            )}
-
-            {tabs.length > 1 && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onCloseTab(tab.id);
-                }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--text-dim)',
-                  cursor: 'pointer',
-                  padding: '2px',
-                  borderRadius: '3px',
                   display: 'flex',
                   alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 10px',
+                  background: isActive ? 'var(--bg-surface)' : 'var(--bg-tab)',
+                  color: 'var(--text-main)',
+                  borderTop: isActive ? '2px solid var(--accent-primary)' : '2px solid transparent',
+                  borderLeft: isActive ? '1px solid var(--border-color)' : '1px solid transparent',
+                  borderRight: isActive ? '1px solid var(--border-color)' : '1px solid transparent',
+                  borderRadius: '6px 6px 0 0',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  flex: '0 1 180px',
+                  minWidth: '110px',
+                  maxWidth: '220px',
+                  boxSizing: 'border-box',
+                  userSelect: 'none',
+                  transition: 'all 0.15s ease',
+                  boxShadow: isActive ? '0 -2px 6px rgba(0, 0, 0, 0.05)' : 'none',
                 }}
-                className="close-tab-btn"
               >
-                <X size={12} />
-              </button>
-            )}
-          </div>
-        );
-      })}
+                {tab.type === 'environment' ? (
+                  <Globe size={13} color="var(--accent-primary)" style={{ flexShrink: 0 }} />
+                ) : (
+                  <span className={`method-badge ${tab.method || 'GET'}`} style={{ fontSize: '9px', padding: '1px 4px', flexShrink: 0 }}>
+                    {tab.method || 'GET'}
+                  </span>
+                )}
 
+                {isEditing ? (
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={editingName}
+                    onChange={(e) => setEditingName(e.target.value)}
+                    onBlur={() => handleFinishEditing(tab)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleFinishEditing(tab);
+                      if (e.key === 'Escape') setEditingTabId(null);
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      flex: '1 1 0%',
+                      minWidth: 0,
+                      width: '100%',
+                      height: '22px',
+                      background: 'var(--bg-input)',
+                      color: 'var(--text-main)',
+                      border: '1px solid var(--accent-primary)',
+                      borderRadius: '4px',
+                      padding: '2px 6px',
+                      fontSize: '11px',
+                      fontWeight: '500',
+                      outline: 'none',
+                      boxShadow: '0 0 0 2px rgba(37, 99, 235, 0.15)',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                ) : (
+                  <span style={{
+                    flex: '1 1 0%',
+                    minWidth: 0,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    fontWeight: isActive ? '600' : '400',
+                  }}>
+                    {tab.name || tab.url || 'New Request'}
+                  </span>
+                )}
+
+                {tab.isDirty && !isEditing && (
+                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--accent-primary)', flexShrink: 0 }} />
+                )}
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCloseTab(tab.id);
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer',
+                    padding: '2px',
+                    borderRadius: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                  title="Close Tab"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </ScrollableTabsContainer>
+
+      {/* Add New Request Button */}
       <button
+        type="button"
         onClick={onAddTab}
         style={{
           background: 'none',
           border: 'none',
           color: 'var(--text-muted)',
-          padding: '8px 12px',
           cursor: 'pointer',
+          padding: '8px 12px',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center',
+          flexShrink: 0,
         }}
-        title="Open New Tab"
+        title="Add New Request Tab"
       >
         <Plus size={16} />
       </button>

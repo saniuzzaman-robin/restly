@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-export const SplitResizer = ({ requestHeight, onResize }) => {
+export const SidebarResizer = ({ width = 280, onResize }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
-  const dragRef = useRef({ startY: 0, startPct: requestHeight });
+  const dragRef = useRef({ startX: 0, startWidth: width });
 
   const handleMouseDown = (e) => {
     e.preventDefault();
-    dragRef.current = { startY: e.clientY, startPct: requestHeight };
+    dragRef.current = { startX: e.clientX, startWidth: width };
     setIsDragging(true);
   };
 
@@ -15,13 +15,10 @@ export const SplitResizer = ({ requestHeight, onResize }) => {
     if (!isDragging) return;
 
     const handleMouseMove = (e) => {
-      const containerHeight = window.innerHeight - 80;
-      if (containerHeight <= 0) return;
-      const deltaY = e.clientY - dragRef.current.startY;
-      const deltaPct = (deltaY / containerHeight) * 100;
-      const newPct = dragRef.current.startPct + deltaPct;
-      const clampedPct = Math.max(15, Math.min(85, newPct));
-      onResize(clampedPct);
+      const deltaX = e.clientX - dragRef.current.startX;
+      const newWidth = dragRef.current.startWidth + deltaX;
+      const clampedWidth = Math.max(180, Math.min(550, newWidth));
+      onResize(clampedWidth);
     };
 
     const handleMouseUp = () => {
@@ -30,7 +27,7 @@ export const SplitResizer = ({ requestHeight, onResize }) => {
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-    document.body.style.cursor = 'row-resize';
+    document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
 
     return () => {
@@ -46,13 +43,13 @@ export const SplitResizer = ({ requestHeight, onResize }) => {
       onMouseDown={handleMouseDown}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      onDoubleClick={() => onResize(48)}
-      title="Drag to resize Request / Response panes (Double-click to reset)"
+      onDoubleClick={() => onResize(280)}
+      title="Drag to resize sidebar width (Double-click to reset)"
       style={{
         position: 'relative',
-        height: '1px',
+        width: '1px',
         background: isDragging || isHovered ? 'var(--accent-primary)' : 'var(--border-color)',
-        cursor: 'row-resize',
+        cursor: 'col-resize',
         zIndex: 10,
         userSelect: 'none',
         flexShrink: 0,
@@ -62,11 +59,11 @@ export const SplitResizer = ({ requestHeight, onResize }) => {
       {/* Invisible wider hit area for easy hover/drag targeting */}
       <div style={{
         position: 'absolute',
-        left: 0,
-        right: 0,
-        top: '-3px',
-        bottom: '-3px',
-        cursor: 'row-resize',
+        top: 0,
+        bottom: 0,
+        left: '-3px',
+        right: '-3px',
+        cursor: 'col-resize',
       }}></div>
     </div>
   );

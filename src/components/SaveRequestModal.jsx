@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Save, FolderPlus, X, Check, FileText } from 'lucide-react';
+import { CustomSelect } from './CustomSelect';
+import { Save, Folder, FolderPlus, X, Check } from 'lucide-react';
 
 export const SaveRequestModal = ({
   request,
@@ -37,9 +38,22 @@ export const SaveRequestModal = ({
     onClose();
   };
 
+  const collectionOptions = [
+    ...collections.map((col) => ({
+      value: col.id,
+      label: `${col.name} (${col.items?.length || 0} requests)`,
+      icon: <Folder size={14} color="var(--accent-primary)" />,
+    })),
+    {
+      value: 'new',
+      label: '+ Create New Collection...',
+      icon: <FolderPlus size={14} color="var(--accent-primary)" />,
+    },
+  ];
+
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-card" style={{ maxWidth: '520px' }} onClick={(e) => e.stopPropagation()}>
+      <div className="modal-card" style={{ maxWidth: '520px', overflow: 'visible' }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '700', fontSize: '15px' }}>
             <Save color="var(--accent-primary)" size={18} />
@@ -51,7 +65,7 @@ export const SaveRequestModal = ({
         </div>
 
         <form onSubmit={handleSubmit}>
-          <div className="modal-body" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div className="modal-body" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', overflow: 'visible' }}>
             {/* Request Name */}
             <div>
               <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
@@ -68,21 +82,7 @@ export const SaveRequestModal = ({
               />
             </div>
 
-            {/* Request Description */}
-            <div>
-              <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
-                DESCRIPTION (OPTIONAL)
-              </label>
-              <textarea
-                className="aether-input"
-                placeholder="Describe what this HTTP request does..."
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                style={{ width: '100%', height: '60px', fontSize: '12px', resize: 'vertical', fontFamily: 'var(--font-sans)' }}
-              />
-            </div>
-
-            {/* Collection Selection */}
+            {/* Collection Selection (Placed above description for spacious overflow) */}
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                 <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)' }}>
@@ -119,20 +119,45 @@ export const SaveRequestModal = ({
                   style={{ width: '100%', fontSize: '12px' }}
                 />
               ) : (
-                <select
-                  className="aether-input"
+                <CustomSelect
+                  options={collectionOptions}
                   value={selectedCollectionId}
-                  onChange={(e) => setSelectedCollectionId(e.target.value)}
-                  style={{ width: '100%', fontSize: '12px', background: 'var(--bg-input)' }}
-                >
-                  {collections.map((col) => (
-                    <option key={col.id} value={col.id}>
-                      📁 {col.name} ({col.items?.length || 0} requests)
-                    </option>
-                  ))}
-                  <option value="new">+ Create New Collection...</option>
-                </select>
+                  onChange={(val) => {
+                    if (val === 'new') {
+                      setIsCreatingCollection(true);
+                    } else {
+                      setSelectedCollectionId(val);
+                    }
+                  }}
+                  style={{ width: '100%' }}
+                />
               )}
+            </div>
+
+            {/* Request Description */}
+            <div>
+              <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
+                DESCRIPTION (OPTIONAL)
+              </label>
+              <textarea
+                className="aether-input"
+                placeholder="Describe what this HTTP request does..."
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                style={{
+                  width: '100%',
+                  height: '65px',
+                  fontSize: '12px',
+                  resize: 'vertical',
+                  fontFamily: 'var(--font-sans)',
+                  overflowX: 'hidden',
+                  overflowY: 'auto',
+                  overflowWrap: 'break-word',
+                  wordBreak: 'break-word',
+                  whiteSpace: 'pre-wrap',
+                  boxSizing: 'border-box',
+                }}
+              />
             </div>
           </div>
 

@@ -1,4 +1,5 @@
 import React from 'react';
+import { CustomSelect } from './CustomSelect';
 
 export const AuthEditor = ({ auth = { type: 'none' }, onChange }) => {
   const handleTypeChange = (type) => {
@@ -8,6 +9,11 @@ export const AuthEditor = ({ auth = { type: 'none' }, onChange }) => {
   const handleFieldChange = (field, val) => {
     onChange({ ...auth, [field]: val });
   };
+
+  const addToOptions = [
+    { value: 'header', label: 'Request Headers' },
+    { value: 'query', label: 'Query Parameters' },
+  ];
 
   return (
     <div style={{ padding: '16px', display: 'flex', gap: '20px' }}>
@@ -52,23 +58,18 @@ export const AuthEditor = ({ auth = { type: 'none' }, onChange }) => {
         )}
 
         {auth.type === 'bearer' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '450px' }}>
-            <div>
-              <label style={{ display: 'block', color: 'var(--text-muted)', fontSize: '11px', marginBottom: '4px' }}>
-                TOKEN
-              </label>
-              <input
-                type="text"
-                className="aether-input mono"
-                placeholder="e.g. {{authToken}} or eyJhbGciOi..."
-                value={auth.token || ''}
-                onChange={(e) => handleFieldChange('token', e.target.value)}
-                style={{ width: '100%' }}
-              />
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-dim)' }}>
-              The Bearer token will be sent in the <code style={{ color: 'var(--accent-primary)' }}>Authorization</code> header. You can use environment variables like <code style={{ color: 'var(--accent-primary)' }}>&#123;&#123;authToken&#125;&#125;</code>.
-            </div>
+          <div style={{ maxWidth: '450px' }}>
+            <label style={{ display: 'block', color: 'var(--text-muted)', fontSize: '11px', marginBottom: '6px' }}>
+              TOKEN
+            </label>
+            <input
+              type="text"
+              className="aether-input mono"
+              placeholder="e.g. eyJhbGciOiJIUzI1NiIsInR5cCI6..."
+              value={auth.token || ''}
+              onChange={(e) => handleFieldChange('token', e.target.value)}
+              style={{ width: '100%' }}
+            />
           </div>
         )}
 
@@ -80,8 +81,8 @@ export const AuthEditor = ({ auth = { type: 'none' }, onChange }) => {
               </label>
               <input
                 type="text"
-                className="aether-input mono"
-                placeholder="Username or {{username}}"
+                className="aether-input"
+                placeholder="Username"
                 value={auth.username || ''}
                 onChange={(e) => handleFieldChange('username', e.target.value)}
                 style={{ width: '100%' }}
@@ -93,8 +94,8 @@ export const AuthEditor = ({ auth = { type: 'none' }, onChange }) => {
               </label>
               <input
                 type="password"
-                className="aether-input mono"
-                placeholder="Password or {{password}}"
+                className="aether-input"
+                placeholder="Password"
                 value={auth.password || ''}
                 onChange={(e) => handleFieldChange('password', e.target.value)}
                 style={{ width: '100%' }}
@@ -135,15 +136,12 @@ export const AuthEditor = ({ auth = { type: 'none' }, onChange }) => {
               <label style={{ display: 'block', color: 'var(--text-muted)', fontSize: '11px', marginBottom: '4px' }}>
                 ADD TO
               </label>
-              <select
-                className="aether-input"
+              <CustomSelect
+                options={addToOptions}
                 value={auth.addTo || 'header'}
-                onChange={(e) => handleFieldChange('addTo', e.target.value)}
+                onChange={(val) => handleFieldChange('addTo', val)}
                 style={{ width: '100%' }}
-              >
-                <option value="header">Request Headers</option>
-                <option value="query">Query Parameters</option>
-              </select>
+              />
             </div>
           </div>
         )}

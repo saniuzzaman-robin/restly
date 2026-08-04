@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { generateCodeSnippet } from '../utils/codeGenerators';
+import { CodeSyntaxHighlighter } from './CodeSyntaxHighlighter';
 import { X, Copy, Check, Code } from 'lucide-react';
 
 const LANGUAGES = [
@@ -24,7 +25,7 @@ export const CodeSnippetModal = ({ request, envVariables = [], onClose }) => {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-card" style={{ maxWidth: '700px' }} onClick={(e) => e.stopPropagation()}>
+      <div className="modal-card" style={{ maxWidth: '720px' }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '700', fontSize: '15px' }}>
             <Code color="var(--accent-primary)" size={18} />
@@ -61,21 +62,17 @@ export const CodeSnippetModal = ({ request, envVariables = [], onClose }) => {
               {copied ? 'Copied' : 'Copy Code'}
             </button>
 
-            <pre style={{
+            <div style={{
               background: 'var(--bg-input)',
               border: '1px solid var(--border-color)',
               borderRadius: '8px',
               padding: '16px',
-              fontSize: '12px',
-              fontFamily: 'var(--font-mono)',
-              color: 'var(--text-main)',
               overflowX: 'auto',
-              whiteSpace: 'pre-wrap',
-              margin: 0,
-              lineHeight: '1.5'
+              maxHeight: '400px',
+              overflowY: 'auto',
             }}>
-              {snippet}
-            </pre>
+              <CodeSyntaxHighlighter code={snippet} language={selectedLang} />
+            </div>
           </div>
         </div>
 

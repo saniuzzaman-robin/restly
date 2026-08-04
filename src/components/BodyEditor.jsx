@@ -98,24 +98,46 @@ export const BodyEditor = ({ body = { mode: 'none' }, onChange }) => {
     onChange({ ...body, rawType });
   };
 
-  const handleJsonChange = (jsonStr) => {
-    onChange({ ...body, json: jsonStr });
-    try {
-      if (jsonStr.trim()) {
-        JSON.parse(jsonStr);
-      }
-      setJsonError(null);
-    } catch (e) {
-      setJsonError(e.message);
-    }
+  const sanitizeQuotes = (str) => {
+    if (typeof str !== 'string') return str;
+    return str
+      .replace(/[“”«»„]/g, '"')
+      .replace(/[‘’]/g, "'");
   };
+
+  const handleJsonChange = (rawStr) => {
+    const cleanStr = sanitizeQuotes(rawStr);
+    onChange({ ...body, json: cleanStr, raw: cleanStr });
+  };
+
+  // Validate JSON whenever body content changes
+  useEffect(() => {
+    if (body.mode === 'raw' && (body.rawType === 'json' || !body.rawType)) {
+      const content = body.json !== undefined ? body.json : (body.raw || '');
+      const cleanContent = sanitizeQuotes(content);
+      if (!cleanContent || !cleanContent.trim()) {
+        setJsonError(null);
+      } else {
+        try {
+          JSON.parse(cleanContent);
+          setJsonError(null);
+        } catch (e) {
+          setJsonError(e.message);
+        }
+      }
+    } else {
+      setJsonError(null);
+    }
+  }, [body.mode, body.rawType, body.json, body.raw]);
 
   const handleFormatJson = () => {
     try {
-      if (body.json) {
-        const parsed = JSON.parse(body.json);
+      const content = body.json !== undefined ? body.json : (body.raw || '');
+      const cleanContent = sanitizeQuotes(content);
+      if (cleanContent) {
+        const parsed = JSON.parse(cleanContent);
         const formatted = JSON.stringify(parsed, null, 2);
-        onChange({ ...body, json: formatted });
+        onChange({ ...body, json: formatted, raw: formatted });
         setJsonError(null);
       }
     } catch (e) {
@@ -147,6 +169,158 @@ export const BodyEditor = ({ body = { mode: 'none' }, onChange }) => {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const handleEditorKeyDown = (e) => {
+    const textarea = e.target;
+    const { selectionStart: start, selectionEnd: end, value } = textarea;
+
+    // 1. Tab Key: Insert 2 spaces tab indent
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const tabSpaces = '  ';
+      const newText = value.substring(0, start) + tabSpaces + value.substring(end);
+
+      if (body.rawType === 'json' || !body.rawType) {
+        handleJsonChange(newText);
+      } else {
+        onChange({ ...body, raw: newText });
+      }
+
+      requestAnimationFrame(() => {
+        textarea.selectionStart = textarea.selectionEnd = start + tabSpaces.length;
+      });
+      return;
+    }
+
+    // 2. VS Code Style Auto-Closing Brackets & Quotes
+    const autoPairs = {
+      '{': '}',
+      '[': ']',
+      '"': '"',
+      "'": "'",
+    };
+
+    if (autoPairs[e.key]) {
+      // Wrap selected text inside quotes/braces
+      if (start !== end) {
+        e.preventDefault();
+        const selectedText = value.substring(start, end);
+        const closingPair = autoPairs[e.key];
+        const newText = value.substring(0, start) + e.key + selectedText + closingPair + value.substring(end);
+
+        if (body.rawType === 'json' || !body.rawType) {
+          handleJsonChange(newText);
+        } else {
+          onChange({ ...body, raw: newText });
+        }
+
+        requestAnimationFrame(() => {
+          textarea.selectionStart = start + 1;
+          textarea.selectionEnd = end + 1;
+        });
+        return;
+      }
+
+      // If user types quote next to existing quote, just skip over it
+      if ((e.key === '"' || e.key === "'") && value[start] === e.key) {
+        e.preventDefault();
+        requestAnimationFrame(() => {
+          textarea.selectionStart = textarea.selectionEnd = start + 1;
+        });
+        return;
+      }
+
+      e.preventDefault();
+      const closingPair = autoPairs[e.key];
+      const newText = value.substring(0, start) + e.key + closingPair + value.substring(end);
+
+      if (body.rawType === 'json' || !body.rawType) {
+        handleJsonChange(newText);
+      } else {
+        onChange({ ...body, raw: newText });
+      }
+
+      requestAnimationFrame(() => {
+        textarea.selectionStart = textarea.selectionEnd = start + 1;
+      });
+      return;
+    }
+
+    // 3. Smart Enter Key Formatting between Braces { | } or [ | ]
+    if (e.key === 'Enter') {
+      const charBefore = value[start - 1];
+      const charAfter = value[start];
+
+      const lastLineBreak = value.lastIndexOf('\n', start - 1);
+      const currentLine = value.substring(lastLineBreak + 1, start);
+      const currentIndentMatch = currentLine.match(/^\s*/);
+      const currentIndent = currentIndentMatch ? currentIndentMatch[0] : '';
+
+      if ((charBefore === '{' && charAfter === '}') || (charBefore === '[' && charAfter === ']')) {
+        e.preventDefault();
+        const extraIndent = '  ';
+        const newText =
+          value.substring(0, start) +
+          '\n' +
+          currentIndent +
+          extraIndent +
+          '\n' +
+          currentIndent +
+          value.substring(end);
+
+        if (body.rawType === 'json' || !body.rawType) {
+          handleJsonChange(newText);
+        } else {
+          onChange({ ...body, raw: newText });
+        }
+
+        requestAnimationFrame(() => {
+          textarea.selectionStart = textarea.selectionEnd = start + 1 + currentIndent.length + extraIndent.length;
+        });
+        return;
+      }
+
+      // Preserve indentation on regular Enter
+      if (currentIndent) {
+        e.preventDefault();
+        const newText = value.substring(0, start) + '\n' + currentIndent + value.substring(end);
+
+        if (body.rawType === 'json' || !body.rawType) {
+          handleJsonChange(newText);
+        } else {
+          onChange({ ...body, raw: newText });
+        }
+
+        requestAnimationFrame(() => {
+          textarea.selectionStart = textarea.selectionEnd = start + 1 + currentIndent.length;
+        });
+        return;
+      }
+    }
+
+    // 4. Smart Backspace: Delete matching empty pair e.g. {|}, [|], ""
+    if (e.key === 'Backspace' && start === end) {
+      const charBefore = value[start - 1];
+      const charAfter = value[start];
+      const pairs = ['{}', '[]', '""', "''"];
+
+      if (pairs.includes(charBefore + charAfter)) {
+        e.preventDefault();
+        const newText = value.substring(0, start - 1) + value.substring(start + 1);
+
+        if (body.rawType === 'json' || !body.rawType) {
+          handleJsonChange(newText);
+        } else {
+          onChange({ ...body, raw: newText });
+        }
+
+        requestAnimationFrame(() => {
+          textarea.selectionStart = textarea.selectionEnd = start - 1;
+        });
+        return;
+      }
+    }
   };
 
   return (
@@ -268,12 +442,18 @@ export const BodyEditor = ({ body = { mode: 'none' }, onChange }) => {
                 className="aether-input mono"
                 value={rawTextContent}
                 onChange={(e) => {
+                  const sanitized = sanitizeQuotes(e.target.value);
                   if (body.rawType === 'json' || !body.rawType) {
-                    handleJsonChange(e.target.value);
+                    handleJsonChange(sanitized);
                   } else {
-                    onChange({ ...body, raw: e.target.value });
+                    onChange({ ...body, raw: sanitized });
                   }
                 }}
+                onKeyDown={handleEditorKeyDown}
+                spellCheck={false}
+                autoCorrect="off"
+                autoCapitalize="off"
+                data-gramm={false}
                 placeholder={
                   body.rawType === 'json' || !body.rawType
                     ? `{\n  "name": "Restly",\n  "status": "active"\n}`
@@ -282,7 +462,17 @@ export const BodyEditor = ({ body = { mode: 'none' }, onChange }) => {
                     : 'Enter raw request body payload...'
                 }
                 rows={10}
-                style={{ width: '100%', flex: 1, minHeight: '160px', resize: 'vertical', lineHeight: '1.5' }}
+                style={{
+                  width: '100%',
+                  flex: 1,
+                  minHeight: '160px',
+                  resize: 'vertical',
+                  lineHeight: '1.6',
+                  fontFamily: "var(--font-mono, 'JetBrains Mono', 'Menlo', 'Monaco', monospace)",
+                  fontSize: '12px',
+                  fontStyle: 'normal',
+                  tabSize: 2,
+                }}
               />
             )}
           </div>
