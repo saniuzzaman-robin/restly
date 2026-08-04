@@ -43,6 +43,12 @@ export function App() {
   const [collectionModalMode, setCollectionModalMode] = useState(null); // 'create' | 'import' | null
   const [showGoogleModal, setShowGoogleModal] = useState(false);
 
+  // Application Zoom Level
+  const [zoomLevel, setZoomLevel] = useState(() => {
+    const saved = localStorage.getItem('restly_zoom_level');
+    return saved ? parseFloat(saved) : 100;
+  });
+
   // Google Sync State
   const [googleUser, setGoogleUser] = useState(() => {
     const saved = localStorage.getItem(GOOGLE_KEYS.USER_PROFILE);
@@ -70,6 +76,12 @@ export function App() {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('aether_theme', theme);
   }, [theme]);
+
+  // Apply Zoom Level
+  useEffect(() => {
+    document.body.style.zoom = `${zoomLevel}%`;
+    localStorage.setItem('restly_zoom_level', zoomLevel.toString());
+  }, [zoomLevel]);
 
   // Global Error & Rejection Recovery Listener to prevent stuck loading states
   useEffect(() => {
@@ -103,6 +115,52 @@ export function App() {
 
   // Active Tab
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
+
+  // Global Keyboard Shortcuts (Zoom In/Out, New Tab, Close Tab, Save)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+      if (!isCmdOrCtrl) return;
+
+      const key = e.key;
+
+      // 1. Zoom In (Cmd + + or Cmd + =)
+      if (key === '+' || key === '=') {
+        e.preventDefault();
+        setZoomLevel((prev) => Math.min(150, Math.round(prev + 10)));
+      }
+      // 2. Zoom Out (Cmd + -)
+      else if (key === '-') {
+        e.preventDefault();
+        setZoomLevel((prev) => Math.max(70, Math.round(prev - 10)));
+      }
+      // 3. Reset Zoom (Cmd + 0)
+      else if (key === '0') {
+        e.preventDefault();
+        setZoomLevel(100);
+      }
+      // 4. Save Request (Cmd + S)
+      else if (key.toLowerCase() === 's') {
+        e.preventDefault();
+        handleSaveRequest();
+      }
+      // 5. New Request Tab (Cmd + T)
+      else if (key.toLowerCase() === 't') {
+        e.preventDefault();
+        handleAddTab();
+      }
+      // 6. Close Current Tab (Cmd + W)
+      else if (key.toLowerCase() === 'w') {
+        e.preventDefault();
+        if (activeTabId) {
+          handleCloseTab(activeTabId);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeTabId, activeTab]);
 
   // Save changes to LocalStorage
   useEffect(() => {
@@ -596,6 +654,8 @@ export function App() {
         <footer className="app-footer">
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <span>RESTLY Studio • Active Env: <strong>{activeEnv?.name || 'No Environment'}</strong></span>
+            <span>|</span>
+            <span>Zoom: <strong>{zoomLevel}%</strong></span>
             <span>|</span>
             <span>Tabs Open: {tabs.length}</span>
           </div>
